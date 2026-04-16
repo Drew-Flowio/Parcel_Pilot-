@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { PARCEL_SORT_KEYS } from "./parcelSortOptions";
-import type { ContactStatus, ParcelFilters, VacancyStatus, ViewSlice } from "./types";
+import type {
+  ContactStatus,
+  ParcelFilters,
+  PortfolioGroupBy,
+  VacancyStatus,
+  ViewSlice,
+} from "./types";
 
 const VACANCY_VALUES: VacancyStatus[] = [
   "occupied",
@@ -56,12 +62,18 @@ export function parseFilters(
       ? (rawSort as ParcelFilters["sort"])
       : "desirability_score";
 
+  const rawGroupBy = get("groupBy");
+  const groupBy: PortfolioGroupBy =
+    rawGroupBy === "mailing" ? "mailing" : "owner";
+
   return {
     view: (
       ["top", "high_value", "honorable_mentions"] as ViewSlice[]
     ).includes(view)
       ? view
       : "top",
+    portfolio: get("portfolio") === "1",
+    groupBy,
     minValue: num("minValue"),
     maxValue: num("maxValue"),
     minUnits: num("minUnits"),
@@ -76,12 +88,19 @@ export function parseFilters(
   };
 }
 
+/** Strip UI-only portfolio fields before SQL (`applyFilters`). */
+export function filtersForQuery(f: ParcelFilters): ParcelFilters {
+  const { portfolio: _po, groupBy: _gb, ...rest } = f;
+  return rest;
+}
+
 /** Apply filters + view slice to a Supabase query. */
 export function applyFilters(
   client: SupabaseClient,
   filters: ParcelFilters,
   options: { count?: boolean; range?: [number, number] } = {}
 ) {
+  filters = filtersForQuery(filters);
   let q = client
     .from("parcels")
     .select(
@@ -95,6 +114,10 @@ export function applyFilters(
       .gte("market_value", filters.minValue ?? 750_000)
       .eq("is_absentee_owner", true)
       .or("is_professionally_managed.is.null,is_professionally_managed.eq.false");
+  }
+
+  if (filters.view === "honorable_mentions") {
+    q = q.gte("unit_count", 4).lte("unit_count", 80);
   }
 
   // Generic filters (also applied on top of the slice)

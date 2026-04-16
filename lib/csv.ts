@@ -1,5 +1,16 @@
 import type { Parcel } from "./types";
 
+/** Selected-row export (bulk action). */
+export const BULK_EXPORT_COLUMNS: { key: keyof Parcel; header: string }[] = [
+  { key: "owner_name", header: "owner_name" },
+  { key: "property_address", header: "property_address" },
+  { key: "mailing_address", header: "mailing_address" },
+  { key: "market_value", header: "market_value" },
+  { key: "unit_count", header: "unit_count" },
+  { key: "desirability_score", header: "desirability_score" },
+  { key: "contact_status", header: "contact_status" },
+];
+
 const COLUMNS: { key: keyof Parcel; header: string }[] = [
   { key: "owner_name", header: "Owner" },
   { key: "owner_phone", header: "Phone" },
@@ -31,6 +42,29 @@ export function parcelsToCsv(rows: Parcel[]): string {
   const head = COLUMNS.map((c) => c.header).join(",");
   const body = rows
     .map((row) => COLUMNS.map((c) => escape(row[c.key])).join(","))
+    .join("\n");
+  return `${head}\n${body}\n`;
+}
+
+export function parcelsToCsvBulk(rows: Parcel[]): string {
+  const head = BULK_EXPORT_COLUMNS.map((c) => c.header).join(",");
+  const body = rows
+    .map((row) => BULK_EXPORT_COLUMNS.map((c) => escape(row[c.key])).join(","))
+    .join("\n");
+  return `${head}\n${body}\n`;
+}
+
+/** Filtered export with portfolio grouping column (owner or mailing bucket label). */
+export function parcelsToCsvPortfolio(
+  rows: Array<{ parcel: Parcel; portfolio_group: string }>
+): string {
+  const head = ["portfolio_group", ...COLUMNS.map((c) => c.header)].join(",");
+  const body = rows
+    .map(({ parcel, portfolio_group }) =>
+      [escape(portfolio_group), ...COLUMNS.map((c) => escape(parcel[c.key]))].join(
+        ","
+      )
+    )
     .join("\n");
   return `${head}\n${body}\n`;
 }

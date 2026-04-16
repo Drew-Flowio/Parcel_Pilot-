@@ -7,6 +7,7 @@ import { cockpitModeToViewSlice, viewSliceToCockpitMode } from "@/lib/cockpitMod
 import { CockpitModeToggle } from "./CockpitModeToggle";
 import { ParcelFiltersForm } from "./ParcelFilters";
 import { ParcelTable } from "./ParcelTable";
+import { PortfolioTree } from "./PortfolioTree";
 import { ParcelDetailDrawer } from "./ParcelDetailDrawer";
 import { Button, Label, Select } from "@/components/ui/Primitives";
 import { PARCEL_SORT_OPTIONS } from "@/lib/parcelSortOptions";
@@ -16,6 +17,18 @@ interface InitialPayload {
   rows: Parcel[];
   total: number;
   filters: ParcelFilters;
+}
+
+interface PortfolioPayload {
+  groups: Array<{
+    key: string;
+    label: string;
+    parcelCount: number;
+    parcels: Parcel[];
+  }>;
+  total: number;
+  truncated?: boolean;
+  maxRows?: number;
 }
 
 function ChevronLeftIcon() {
@@ -46,11 +59,17 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [cockpitMode, setCockpitMode] = useState<CockpitMode>(() =>
-    viewSliceToCockpitMode(initial.filters.view)
+    initial.filters.portfolio
+      ? "portfolio_view"
+      : viewSliceToCockpitMode(initial.filters.view)
   );
+  const [portfolioPayload, setPortfolioPayload] = useState<PortfolioPayload | null>(
+    null
+  );
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const skipNextFetch = useRef(true);
+  const skipNextFetch = useRef(!initial.filters.portfolio);
 
   const buildQueryString = useCallback((f: ParcelFilters) => {
     const sp = new URLSearchParams();
@@ -65,6 +84,8 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
     if (f.contactStatus?.length) f.contactStatus.forEach((c) => sp.append("contact", c));
     if (f.sort) sp.set("sort", f.sort);
     if (f.page && f.page > 1) sp.set("page", String(f.page));
+    if (f.portfolio) sp.set("portfolio", "1");
+    if (f.groupBy === "mailing") sp.set("groupBy", "mailing");
     return sp.toString();
   }, []);
 
@@ -79,10 +100,24 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
       const qs = buildQueryString(filters);
       router.replace(`/?${qs}`, { scroll: false });
       try {
-        const res = await fetch(`/api/parcels?${qs}`);
-        const json = await res.json();
-        setRows(json.rows ?? []);
-        setTotal(json.total ?? 0);
+        if (filters.portfolio) {
+          const res = await fetch(`/api/parcels/portfolio?${qs}`);
+          const json = (await res.json()) as PortfolioPayload & { error?: string };
+          if (!res.ok) {
+            console.error(json.error ?? "Portfolio fetch failed");
+            setPortfolioPayload(null);
+            return;
+          }
+          setPortfolioPayload(json);
+          setRows([]);
+          setTotal(json.total ?? 0);
+        } else {
+          const res = await fetch(`/api/parcels?${qs}`);
+          const json = await res.json();
+          setRows(json.rows ?? []);
+          setTotal(json.total ?? 0);
+          setPortfolioPayload(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -107,6 +142,41 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
     if (active) setMobileFiltersOpen(false);
   }, [active]);
 
+  const selectionResetKey = useMemo(() => {
+    const { page: _page, ...rest } = filters;
+    return JSON.stringify(rest);
+  }, [filters]);
+
+  useEffect(() => {
+    setSelected(new Set());
+  }, [selectionResetKey]);
+
+  const refetchRows = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = buildQueryString(filters);
+      if (filters.portfolio) {
+        const res = await fetch(`/api/parcels/portfolio?${qs}`);
+        const json = (await res.json()) as PortfolioPayload & { error?: string };
+        if (!res.ok) {
+          window.alert(json.error ?? "Portfolio fetch failed");
+          return;
+        }
+        setPortfolioPayload(json);
+        setRows([]);
+        setTotal(json.total ?? 0);
+      } else {
+        const res = await fetch(`/api/parcels?${qs}`);
+        const json = await res.json();
+        setRows(json.rows ?? []);
+        setTotal(json.total ?? 0);
+        setPortfolioPayload(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, buildQueryString]);
+
   const updateFilters = (patch: Partial<ParcelFilters>) => {
     setFilters((f) => ({ ...f, ...patch, page: 1 }));
   };
@@ -116,12 +186,19 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
       sort: "desirability_score",
       page: 1,
       pageSize: 25,
+      portfolio: cockpitMode === "portfolio_view",
+      groupBy: "owner",
     });
   };
 
   const onCockpitModeChange = (mode: CockpitMode) => {
     setCockpitMode(mode);
-    setFilters((f) => ({ ...f, view: cockpitModeToViewSlice(mode), page: 1 }));
+    setFilters((f) => ({
+      ...f,
+      view: cockpitModeToViewSlice(mode),
+      page: 1,
+      portfolio: mode === "portfolio_view",
+    }));
   };
 
   const toggleSelect = (id: string) => {
@@ -142,32 +219,145 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
     });
   };
 
-  const exportUrl = useMemo(() => {
-    if (selected.size > 0) {
-      const sp = new URLSearchParams();
-      Array.from(selected).forEach((id) => sp.append("id", id));
-      return `/api/parcels/export?${sp.toString()}`;
-    }
-    return `/api/parcels/export?${buildQueryString(filters)}`;
-  }, [selected, filters, buildQueryString]);
-
-  const topTargetCount = useMemo(
+  /** Flat filtered CSV — omit `portfolio=1` so export route does not add grouping columns. */
+  const exportFilteredUrl = useMemo(
     () =>
-      rows.filter((r) => (parseDesirabilityScore(r.desirability_score) ?? 0) >= 85)
-        .length,
-    [rows]
+      `/api/parcels/export?${buildQueryString({ ...filters, portfolio: false })}`,
+    [filters, buildQueryString]
   );
+
+  const exportPortfolioUrl = useMemo(() => {
+    if (!filters.portfolio) return "";
+    return `/api/parcels/export?${buildQueryString(filters)}`;
+  }, [filters, buildQueryString]);
+
+  const exportSelectedUrl = useMemo(() => {
+    if (selected.size === 0) return "";
+    const sp = new URLSearchParams();
+    Array.from(selected).forEach((id) => sp.append("id", id));
+    return `/api/parcels/export?${sp.toString()}`;
+  }, [selected]);
+
+  const topTargetCount = useMemo(() => {
+    const list =
+      filters.portfolio && portfolioPayload
+        ? portfolioPayload.groups.flatMap((g) => g.parcels)
+        : rows;
+    return list.filter(
+      (r) => (parseDesirabilityScore(r.desirability_score) ?? 0) >= 85
+    ).length;
+  }, [filters.portfolio, portfolioPayload, rows]);
 
   const onUpdated = (p: Parcel) => {
     setRows((rs) => rs.map((r) => (r.id === p.id ? p : r)));
     setActive(p);
+    if (filters.portfolio) void refetchRows();
+  };
+
+  const selectAllOnPage = () => {
+    setSelected(new Set(rows.map((r) => r.id)));
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
+  const bulkMarkContacted = async () => {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/parcels/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "mark_contacted",
+          ids: Array.from(selected),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        window.alert((json as { error?: string }).error ?? "Bulk update failed");
+        return;
+      }
+      await refetchRows();
+      setSelected(new Set());
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkSkipTrace = async () => {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/parcels/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "skip_trace_llc",
+          ids: Array.from(selected),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        window.alert((json as { error?: string }).error ?? "Bulk update failed");
+        return;
+      }
+      const n = (json as { updated?: number }).updated ?? 0;
+      window.alert(
+        n > 0
+          ? `Added skip-trace note to ${n} LLC parcel(s). Non-LLC or already tagged rows were skipped.`
+          : "No LLC rows needed an update (already noted or not LLC)."
+      );
+      await refetchRows();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkSkipTracePortfolio = async () => {
+    const ids =
+      portfolioPayload?.groups.flatMap((g) => g.parcels.map((p) => p.id)) ?? [];
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/parcels/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "skip_trace_llc",
+          ids,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        window.alert((json as { error?: string }).error ?? "Bulk update failed");
+        return;
+      }
+      const n = (json as { updated?: number }).updated ?? 0;
+      window.alert(
+        n > 0
+          ? `Added skip-trace note to ${n} LLC parcel(s) in this portfolio load. Non-LLC or already tagged rows were skipped.`
+          : "No LLC rows needed an update (already noted or not LLC)."
+      );
+      await refetchRows();
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 25;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
-  const tableTotalLabel = `${rows.length.toLocaleString()} on page · ${total.toLocaleString()} total`;
+  const tableTotalLabel =
+    filters.portfolio && portfolioPayload
+      ? `${portfolioPayload.groups.length.toLocaleString()} groups · ${(
+          portfolioPayload.total ?? 0
+        ).toLocaleString()} parcels matched${
+          portfolioPayload.truncated
+            ? ` (grouping uses first ${portfolioPayload.maxRows ?? 5000} rows)`
+            : ""
+        }`
+      : `${rows.length.toLocaleString()} on page · ${total.toLocaleString()} total`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -251,6 +441,36 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
           <div className="flex flex-1 flex-col gap-5 p-4 sm:p-6">
             <CockpitModeToggle value={cockpitMode} onChange={onCockpitModeChange} />
 
+            {cockpitMode === "portfolio_view" ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                  Group by
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={
+                      (filters.groupBy ?? "owner") === "owner"
+                        ? "primary"
+                        : "secondary"
+                    }
+                    onClick={() => updateFilters({ groupBy: "owner" })}
+                  >
+                    Owner name
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={
+                      filters.groupBy === "mailing" ? "primary" : "secondary"
+                    }
+                    onClick={() => updateFilters({ groupBy: "mailing" })}
+                  >
+                    Mailing address
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
@@ -266,55 +486,154 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
                 </h1>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <a href={exportFilteredUrl}>
+                  <Button variant={filters.portfolio ? "secondary" : "primary"}>
+                    Export filtered CSV
+                  </Button>
+                </a>
+                {filters.portfolio && exportPortfolioUrl ? (
+                  <a href={exportPortfolioUrl}>
+                    <Button variant="primary">Export Portfolio</Button>
+                  </a>
+                ) : null}
+              </div>
+            </div>
+
+            {filters.portfolio ? (
+              <div
+                className="flex flex-wrap items-center gap-2 rounded-xl border border-ink-200 bg-white px-4 py-3 shadow-soft"
+                role="toolbar"
+                aria-label="Portfolio actions"
+              >
+                {portfolioPayload?.truncated ? (
+                  <span className="text-xs text-amber-800">
+                    Result set is larger than the portfolio cap — grouping uses the
+                    top {portfolioPayload.maxRows?.toLocaleString() ?? "5,000"} rows
+                    by current sort.
+                  </span>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={
+                    bulkBusy ||
+                    loading ||
+                    (portfolioPayload?.groups.length ?? 0) === 0
+                  }
+                  onClick={bulkSkipTracePortfolio}
+                >
+                  Skip Trace Portfolio
+                </Button>
+              </div>
+            ) : (
+              <div
+                className="flex flex-wrap items-center gap-2 rounded-xl border border-ink-200 bg-white px-4 py-3 shadow-soft"
+                role="toolbar"
+                aria-label="Bulk actions"
+              >
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={bulkBusy || rows.length === 0}
+                  title="Select every row on this page"
+                  onClick={selectAllOnPage}
+                >
+                  Select All
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={bulkBusy || selected.size === 0}
+                  onClick={clearSelection}
+                >
+                  Clear Selection
+                </Button>
                 {selected.size > 0 ? (
-                  <span className="rounded-full bg-accent-50 px-3 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-200/60">
+                  <a
+                    href={exportSelectedUrl}
+                    className={`inline-flex items-center justify-center rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm font-medium text-ink-900 hover:border-ink-300 hover:bg-ink-50 ${
+                      bulkBusy ? "pointer-events-none opacity-50" : ""
+                    }`}
+                  >
+                    Export Selected (CSV)
+                  </a>
+                ) : (
+                  <Button type="button" variant="secondary" disabled>
+                    Export Selected (CSV)
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={bulkBusy || selected.size === 0}
+                  onClick={bulkSkipTrace}
+                >
+                  Skip Trace All
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={bulkBusy || selected.size === 0}
+                  onClick={bulkMarkContacted}
+                >
+                  Mark Contacted
+                </Button>
+                {selected.size > 0 ? (
+                  <span className="text-xs text-ink-500">
                     {selected.size} selected
                   </span>
                 ) : null}
-                <a href={exportUrl}>
-                  <Button variant="primary">Export CSV</Button>
-                </a>
               </div>
-            </div>
+            )}
 
             <div className="space-y-3">
-              <div className="flex flex-col gap-2 rounded-xl border border-ink-200 bg-white px-4 py-3 shadow-soft sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                <Label htmlFor="parcel-sort" className="!mb-0 shrink-0 sm:pt-0.5">
-                  Sort by
-                </Label>
-                <Select
-                  id="parcel-sort"
-                  className="sm:max-w-xs sm:flex-1"
-                  value={filters.sort ?? "desirability_score"}
-                  onChange={(e) =>
-                    updateFilters({
-                      sort: e.target.value as ParcelFilters["sort"],
-                    })
-                  }
-                >
-                  {PARCEL_SORT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+              {!filters.portfolio ? (
+                <div className="flex flex-col gap-2 rounded-xl border border-ink-200 bg-white px-4 py-3 shadow-soft sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <Label htmlFor="parcel-sort" className="!mb-0 shrink-0 sm:pt-0.5">
+                    Sort by
+                  </Label>
+                  <Select
+                    id="parcel-sort"
+                    className="sm:max-w-xs sm:flex-1"
+                    value={filters.sort ?? "desirability_score"}
+                    onChange={(e) =>
+                      updateFilters({
+                        sort: e.target.value as ParcelFilters["sort"],
+                      })
+                    }
+                  >
+                    {PARCEL_SORT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ) : null}
 
-              <ParcelTable
-                rows={rows}
-                loading={loading}
-                selected={selected}
-                onToggleSelect={toggleSelect}
-                onToggleAll={toggleAll}
-                onRowClick={(p) => setActive(p)}
-                onParcelUpdated={(p) =>
-                  setRows((rs) => rs.map((r) => (r.id === p.id ? p : r)))
-                }
-                totalLabel={tableTotalLabel}
-              />
+              {filters.portfolio ? (
+                <PortfolioTree
+                  groups={portfolioPayload?.groups ?? []}
+                  loading={loading}
+                  onRowClick={(p) => setActive(p)}
+                />
+              ) : (
+                <ParcelTable
+                  rows={rows}
+                  loading={loading}
+                  selected={selected}
+                  onToggleSelect={toggleSelect}
+                  onToggleAll={toggleAll}
+                  onRowClick={(p) => setActive(p)}
+                  onParcelUpdated={(p) =>
+                    setRows((rs) => rs.map((r) => (r.id === p.id ? p : r)))
+                  }
+                  totalLabel={tableTotalLabel}
+                />
+              )}
             </div>
 
-            {pageCount > 1 ? (
+            {!filters.portfolio && pageCount > 1 ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3 text-sm shadow-soft">
                 <span className="text-ink-500">
                   Page <span className="font-medium text-ink-800">{page}</span> of{" "}
@@ -337,6 +656,9 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
                   </Button>
                 </div>
               </div>
+            ) : null}
+            {filters.portfolio ? (
+              <p className="text-xs text-ink-500">{tableTotalLabel}</p>
             ) : null}
           </div>
         </main>

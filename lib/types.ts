@@ -43,6 +43,9 @@ export interface Parcel {
 
 export type ViewSlice = "top" | "high_value" | "honorable_mentions";
 
+/** Portfolio tree grouping dimension (URL: `groupBy=owner` | `groupBy=mailing`). */
+export type PortfolioGroupBy = "owner" | "mailing";
+
 /**
  * Workspace mode — maps to `ViewSlice` for list queries (`lib/cockpitMode.ts`).
  *
@@ -76,4 +79,7 @@ export interface ParcelFilters {
     | "created_at";
   page?: number;
   pageSize?: number;
+  /** URL: `portfolio=1` — tree layout; does not affect SQL (stripped in `filtersForQuery`). */
+  portfolio?: boolean;
+  groupBy?: PortfolioGroupBy;
 }

@@ -1,6 +1,6 @@
 import React from "react";
 import { getSupabaseServer } from "@/lib/supabaseClient";
-import { applyFilters, parseFilters } from "@/lib/parcelQuery";
+import { applyFilters, filtersForQuery, parseFilters } from "@/lib/parcelQuery";
 import { Cockpit } from "@/components/parcel/Cockpit";
 import { ParcelPilotLogo } from "@/components/ui/Logo";
 import type { Parcel } from "@/lib/types";
@@ -13,10 +13,11 @@ export default async function DashboardPage({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const filters = parseFilters(searchParams);
+  const queryFilters = filtersForQuery(filters);
   const supabase = getSupabaseServer();
 
-  const page = filters.page ?? 1;
-  const pageSize = filters.pageSize ?? 25;
+  const page = queryFilters.page ?? 1;
+  const pageSize = queryFilters.pageSize ?? 25;
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
@@ -25,14 +26,22 @@ export default async function DashboardPage({
   let errorMsg: string | null = null;
 
   try {
-    const { data, count, error } = await applyFilters(supabase, filters, {
-      count: true,
-      range: [from, to],
-    });
-    if (error) errorMsg = error.message;
-    else {
-      rows = (data ?? []) as Parcel[];
-      total = count ?? 0;
+    if (filters.portfolio) {
+      const { count, error } = await applyFilters(supabase, queryFilters, {
+        count: true,
+      });
+      if (error) errorMsg = error.message;
+      else total = count ?? 0;
+    } else {
+      const { data, count, error } = await applyFilters(supabase, queryFilters, {
+        count: true,
+        range: [from, to],
+      });
+      if (error) errorMsg = error.message;
+      else {
+        rows = (data ?? []) as Parcel[];
+        total = count ?? 0;
+      }
     }
   } catch (e) {
     errorMsg = e instanceof Error ? e.message : "Unknown error";
