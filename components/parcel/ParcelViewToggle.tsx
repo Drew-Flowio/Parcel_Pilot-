@@ -6,7 +6,11 @@ import type { ViewSlice } from "@/lib/types";
 const VIEWS: { id: ViewSlice; label: string; sub: string }[] = [
   { id: "top", label: "Top Targets", sub: "Hottest list, ranked by score" },
   { id: "high_value", label: "High Value & Under-Managed", sub: "Absentee + valuable + no PM" },
-  { id: "small_juicy", label: "Small but Juicy", sub: "3–40 units, winnable accounts" },
+  {
+    id: "honorable_mentions",
+    label: "Honorable mentions",
+    sub: "3–40 units, winnable accounts",
+  },
 ];
 
 export function ParcelViewToggle({

@@ -29,7 +29,11 @@ export function parseFilters(
     return Array.isArray(v) ? v : [v];
   };
 
-  const view = (get("view") as ViewSlice) || "top";
+  const rawView = get("view") || "top";
+  const view =
+    rawView === "small_juicy"
+      ? "honorable_mentions"
+      : ((rawView as ViewSlice) || "top");
   const num = (k: string) => {
     const v = get(k);
     if (v == null || v === "") return undefined;
@@ -45,7 +49,9 @@ export function parseFilters(
   );
 
   return {
-    view: (["top", "high_value", "small_juicy"] as ViewSlice[]).includes(view)
+    view: (
+      ["top", "high_value", "honorable_mentions"] as ViewSlice[]
+    ).includes(view)
       ? view
       : "top",
     minValue: num("minValue"),
@@ -81,7 +87,7 @@ export function applyFilters(
       .gte("market_value", filters.minValue ?? 750_000)
       .eq("is_absentee_owner", true)
       .or("is_professionally_managed.is.null,is_professionally_managed.eq.false");
-  } else if (filters.view === "small_juicy") {
+  } else if (filters.view === "honorable_mentions") {
     q = q
       .gte("unit_count", filters.minUnits ?? 3)
       .lte("unit_count", filters.maxUnits ?? 40);
@@ -92,10 +98,10 @@ export function applyFilters(
     q = q.gte("market_value", filters.minValue);
   }
   if (filters.maxValue != null) q = q.lte("market_value", filters.maxValue);
-  if (filters.minUnits != null && filters.view !== "small_juicy") {
+  if (filters.minUnits != null && filters.view !== "honorable_mentions") {
     q = q.gte("unit_count", filters.minUnits);
   }
-  if (filters.maxUnits != null && filters.view !== "small_juicy") {
+  if (filters.maxUnits != null && filters.view !== "honorable_mentions") {
     q = q.lte("unit_count", filters.maxUnits);
   }
 

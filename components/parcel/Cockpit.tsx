@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import type { Parcel, ParcelFilters, ViewSlice } from "@/lib/types";
 import { ParcelViewToggle } from "./ParcelViewToggle";
 import { ParcelFiltersPanel } from "./ParcelFilters";
@@ -17,7 +17,6 @@ interface InitialPayload {
 
 export function Cockpit({ initial }: { initial: InitialPayload }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [filters, setFilters] = useState<ParcelFilters>(initial.filters);
   const [rows, setRows] = useState<Parcel[]>(initial.rows);

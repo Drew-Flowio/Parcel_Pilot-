@@ -41,7 +41,7 @@ export interface Parcel {
   updated_at: string;
 }
 
-export type ViewSlice = "top" | "high_value" | "small_juicy";
+export type ViewSlice = "top" | "high_value" | "honorable_mentions";
 
 export interface ParcelFilters {
   view: ViewSlice;

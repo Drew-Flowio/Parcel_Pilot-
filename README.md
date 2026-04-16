@@ -26,7 +26,7 @@ behind any external auth proxy you already trust.
     `BEFORE INSERT/UPDATE` trigger that recomputes the score on every write.
   - `lib/desirability.ts` — TypeScript mirror that returns a per-factor
     breakdown for the detail drawer ("+25 absentee owner, +20 long vacant, …").
-- **Three view slices** (`top`, `high_value`, `small_juicy`) are presets layered
+- **Three view slices** (`top`, `high_value`, `honorable_mentions`) are presets layered
   on top of the regular filters in `lib/parcelQuery.ts`.
 - **Contact actions** (`SMS / Email / Log Call`) update `contact_status`,
   `contacted_via`, and `last_contacted_at`. SMS/email sends are stubbed —
