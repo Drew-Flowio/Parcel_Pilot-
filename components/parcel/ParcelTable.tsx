@@ -7,6 +7,7 @@ import {
   formatContactStatus,
   formatCurrency,
   formatVacancy,
+  parseDesirabilityScore,
   scoreColor,
 } from "@/lib/desirability";
 import { Badge } from "@/components/ui/Primitives";
@@ -95,8 +96,8 @@ export function ParcelTable({
           </thead>
           <tbody className="divide-y divide-ink-100">
             {rows.map((p) => {
-              const s = Number(p.desirability_score);
-              const emoji = desirabilityTierEmoji(s);
+              const s = parseDesirabilityScore(p.desirability_score);
+              const emoji = s != null ? desirabilityTierEmoji(s) : null;
               return (
                 <tr
                   key={p.id}
@@ -117,6 +118,12 @@ export function ParcelTable({
                     <div className="mt-0.5 text-xs leading-relaxed text-ink-500">
                       {p.property_address}
                     </div>
+                    <div className="mt-0.5 text-[11px] text-ink-500 md:hidden">
+                      Units:{" "}
+                      <span className="font-mono tabular-nums text-ink-700">
+                        {p.unit_count ?? "—"}
+                      </span>
+                    </div>
                   </td>
                   <td className="hidden max-w-[200px] truncate px-3 py-3 text-ink-600 sm:table-cell">
                     {p.mailing_address ?? "—"}
@@ -134,21 +141,25 @@ export function ParcelTable({
                   </td>
                   <td className="px-3 py-3">
                     <span
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${scoreColor(
-                        s
-                      )}`}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${
+                        s != null ? scoreColor(s) : "border-ink-200 bg-ink-50 text-ink-500"
+                      }`}
                       title={
-                        s >= 85
-                          ? "High desirability (85+)"
-                          : s >= 60
-                            ? "Medium (60–84)"
-                            : "Lower priority (<60)"
+                        s == null
+                          ? "No desirability score from API"
+                          : s >= 85
+                            ? "High desirability (85+)"
+                            : s >= 60
+                              ? "Medium (60–84)"
+                              : "Lower priority (<60)"
                       }
                     >
-                      <span className="select-none" aria-hidden>
-                        {emoji}
-                      </span>
-                      {s.toFixed(1)}
+                      {emoji != null ? (
+                        <span className="select-none" aria-hidden>
+                          {emoji}
+                        </span>
+                      ) : null}
+                      {s != null ? s.toFixed(1) : "—"}
                     </span>
                   </td>
                   <td className="hidden px-3 py-3 xl:table-cell">

@@ -9,6 +9,7 @@ import { ParcelFiltersForm } from "./ParcelFilters";
 import { ParcelTable } from "./ParcelTable";
 import { ParcelDetailDrawer } from "./ParcelDetailDrawer";
 import { Button } from "@/components/ui/Primitives";
+import { parseDesirabilityScore } from "@/lib/desirability";
 
 interface InitialPayload {
   rows: Parcel[];
@@ -150,7 +151,9 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
   }, [selected, filters, buildQueryString]);
 
   const topTargetCount = useMemo(
-    () => rows.filter((r) => r.desirability_score >= 85).length,
+    () =>
+      rows.filter((r) => (parseDesirabilityScore(r.desirability_score) ?? 0) >= 85)
+        .length,
     [rows]
   );
 

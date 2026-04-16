@@ -7,6 +7,7 @@ import {
   formatContactStatus,
   formatCurrency,
   formatVacancy,
+  parseDesirabilityScore,
   scoreColor,
 } from "@/lib/desirability";
 import { Badge, Button, Input, Label, Select } from "@/components/ui/Primitives";
@@ -29,6 +30,11 @@ export function ParcelDetailDrawer({
   if (!parcel || !draft) return null;
 
   const breakdown = computeDesirabilityBreakdown(draft);
+  const storedScore = parseDesirabilityScore(draft.desirability_score);
+  const displayScore = storedScore ?? breakdown.computedTotal;
+  const scoreMismatch =
+    storedScore != null &&
+    Math.abs(storedScore - breakdown.computedTotal) > 0.15;
 
   const patch = async (body: Record<string, unknown>) => {
     setSaving(true);
@@ -86,8 +92,8 @@ export function ParcelDetailDrawer({
             <div className="mt-1 text-sm text-ink-500">{draft.property_address}</div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <Badge className={`${scoreColor(breakdown.total)} px-3 py-1 text-base`}>
-              <span className="font-mono">{breakdown.total.toFixed(0)}</span>
+            <Badge className={`${scoreColor(displayScore)} px-3 py-1 text-base`}>
+              <span className="font-mono">{displayScore.toFixed(1)}</span>
               <span className="text-[10px] uppercase tracking-wider">/100</span>
             </Badge>
             <button
@@ -127,8 +133,37 @@ export function ParcelDetailDrawer({
             Why this score
           </h3>
           <p className="mt-1 text-xs text-ink-500">
-            Each factor contributes points toward the 0–100 desirability score.
+            The badge uses the score stored in the database (computed by Postgres). Below,
+            raw points add up to at most 70, then{" "}
+            <span className="font-mono">(raw ÷ 70) × 100</span> gives the 0–100 value.
           </p>
+          <div className="mt-3 rounded-lg border border-ink-100 bg-ink-50/60 px-3 py-2 text-xs text-ink-700">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span>
+                <span className="text-ink-500">Stored score:</span>{" "}
+                <span className="font-mono font-semibold">
+                  {storedScore != null ? storedScore.toFixed(1) : "—"}
+                </span>
+              </span>
+              <span>
+                <span className="text-ink-500">Raw sum:</span>{" "}
+                <span className="font-mono font-semibold">{breakdown.rawSum.toFixed(1)}</span>
+                <span className="text-ink-500"> /70</span>
+              </span>
+              <span>
+                <span className="text-ink-500">Recomputed:</span>{" "}
+                <span className="font-mono font-semibold">
+                  {breakdown.computedTotal.toFixed(1)}
+                </span>
+              </span>
+            </div>
+            {scoreMismatch ? (
+              <p className="mt-2 text-amber-800">
+                Stored score differs from the in-app formula (data may differ from the last
+                trigger run, or inputs changed). Refresh or re-save to resync.
+              </p>
+            ) : null}
+          </div>
           <ul className="mt-4 space-y-2">
             {breakdown.factors.map((f, i) => (
               <li

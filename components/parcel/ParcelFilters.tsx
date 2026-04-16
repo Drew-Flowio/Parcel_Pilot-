@@ -107,6 +107,9 @@ export function ParcelFiltersForm({
             }
           />
         </div>
+        <p className="mt-1.5 text-[11px] leading-snug text-ink-500">
+          Leave blank to show all multifamily rows. Set min and/or max to narrow by unit count.
+        </p>
       </div>
 
       <div>

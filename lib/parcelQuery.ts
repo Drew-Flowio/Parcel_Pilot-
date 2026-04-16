@@ -87,10 +87,6 @@ export function applyFilters(
       .gte("market_value", filters.minValue ?? 750_000)
       .eq("is_absentee_owner", true)
       .or("is_professionally_managed.is.null,is_professionally_managed.eq.false");
-  } else if (filters.view === "honorable_mentions") {
-    q = q
-      .gte("unit_count", filters.minUnits ?? 3)
-      .lte("unit_count", filters.maxUnits ?? 40);
   }
 
   // Generic filters (also applied on top of the slice)
@@ -98,10 +94,11 @@ export function applyFilters(
     q = q.gte("market_value", filters.minValue);
   }
   if (filters.maxValue != null) q = q.lte("market_value", filters.maxValue);
-  if (filters.minUnits != null && filters.view !== "honorable_mentions") {
+  // Unit min/max only when the user sets them — no implicit cap on any view (incl. Small Buildings).
+  if (filters.minUnits != null) {
     q = q.gte("unit_count", filters.minUnits);
   }
-  if (filters.maxUnits != null && filters.view !== "honorable_mentions") {
+  if (filters.maxUnits != null) {
     q = q.lte("unit_count", filters.maxUnits);
   }
 
