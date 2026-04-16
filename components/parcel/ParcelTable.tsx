@@ -4,13 +4,13 @@ import React, { useState } from "react";
 import type { Parcel } from "@/lib/types";
 import {
   desirabilityTierEmoji,
-  formatContactStatus,
   formatCurrency,
   formatVacancy,
   parseDesirabilityScore,
   scoreColor,
 } from "@/lib/desirability";
 import { Badge, Button } from "@/components/ui/Primitives";
+import { ContactQuickActions } from "./ContactQuickActions";
 import { LLCSkipTraceModal } from "./LLCSkipTraceModal";
 import { classifyOwnerType, ownerTypeBadgeClass } from "@/lib/ownerType";
 import { hasNeedsSkipTraceNote } from "@/lib/skipTrace";
@@ -116,7 +116,7 @@ export function ParcelTable({
               <th className="hidden md:table-cell px-3 py-3 text-right">Units</th>
               <th className="hidden lg:table-cell px-3 py-3">Vacancy</th>
               <th className="px-3 py-3">Desirability</th>
-              <th className="hidden xl:table-cell px-3 py-3">Contact</th>
+              <th className="hidden min-w-[200px] px-3 py-3 lg:table-cell">Contact status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ink-100">
@@ -221,10 +221,11 @@ export function ParcelTable({
                       {s != null ? s.toFixed(1) : "—"}
                     </span>
                   </td>
-                  <td className="hidden px-3 py-3 xl:table-cell">
-                    <Badge className="border-ink-200/80 bg-white text-ink-700">
-                      {formatContactStatus(p.contact_status)}
-                    </Badge>
+                  <td className="hidden px-3 py-3 align-top lg:table-cell">
+                    <ContactQuickActions
+                      parcel={p}
+                      onUpdated={(updated) => onParcelUpdated?.(updated)}
+                    />
                   </td>
                 </tr>
               );

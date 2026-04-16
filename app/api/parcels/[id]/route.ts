@@ -9,6 +9,8 @@ const ALLOWED: (keyof Parcel)[] = [
   "owner_email",
   "contact_status",
   "contact_notes",
+  "last_contacted_at",
+  "contacted_via",
 ];
 
 export async function PATCH(
