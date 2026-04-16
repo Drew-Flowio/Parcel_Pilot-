@@ -4,6 +4,7 @@ import React from "react";
 import type { Parcel, ScoringMode } from "@/lib/types";
 import type { ScoringWeightsBundle } from "@/lib/scoringWeights";
 import { getDisplayScore } from "@/lib/desirability";
+import { EMPTY_PARCELS_HINT } from "@/lib/emptyStateCopy";
 
 export interface PortfolioTreeGroup {
   key: string;
@@ -35,8 +36,11 @@ export function PortfolioTree({
 
   if (groups.length === 0) {
     return (
-      <div className="rounded-xl border border-ink-200 bg-white px-4 py-8 text-center text-sm text-ink-500 shadow-soft">
-        No parcels match the current filters.
+      <div className="rounded-xl border border-dashed border-ink-200 bg-white px-6 py-12 text-center shadow-soft">
+        <div className="font-display text-base font-semibold text-ink-800">
+          No portfolio groups yet
+        </div>
+        <p className="mx-auto mt-2 max-w-md text-sm text-ink-500">{EMPTY_PARCELS_HINT}</p>
       </div>
     );
   }

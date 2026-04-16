@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { toast } from "sonner";
 import type { ContactStatus, Parcel, ScoringMode } from "@/lib/types";
 import type { ScoringWeightsBundle } from "@/lib/scoringWeights";
 import { weightsForMode } from "@/lib/scoringWeights";
@@ -65,9 +66,16 @@ export function ParcelDetailDrawer({
         body: JSON.stringify(body),
       });
       const json = await res.json();
+      if (!res.ok) {
+        toast.error((json as { error?: string }).error ?? "Could not save changes");
+        return;
+      }
       if (json.parcel) {
         setDraft(json.parcel);
         onUpdated(json.parcel);
+        toast.success("Saved", { id: "parcel-drawer-patch", duration: 2000 });
+      } else {
+        toast.error("Unexpected response");
       }
     } finally {
       setSaving(false);
@@ -83,9 +91,18 @@ export function ParcelDetailDrawer({
         body: JSON.stringify({ id: parcel.id, action }),
       });
       const json = await res.json();
+      if (!res.ok) {
+        toast.error((json as { error?: string }).error ?? "Contact action failed");
+        return;
+      }
       if (json.parcel) {
         setDraft(json.parcel);
         onUpdated(json.parcel);
+        const label =
+          action === "sms" ? "SMS logged" : action === "email" ? "Email logged" : "Call logged";
+        toast.success(label);
+      } else {
+        toast.error("Unexpected response");
       }
     } finally {
       setBusyAction(null);

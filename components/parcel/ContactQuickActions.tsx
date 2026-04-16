@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { toast } from "sonner";
 import type { ContactStatus, Parcel } from "@/lib/types";
 import { formatContactStatus } from "@/lib/desirability";
 import { Badge, Button } from "@/components/ui/Primitives";
@@ -18,12 +19,13 @@ export function ContactQuickActions({
 }) {
   const [busy, setBusy] = useState(false);
 
-  const run = async (fn: () => Promise<void>) => {
+  const run = async (fn: () => Promise<void>, success?: string) => {
     setBusy(true);
     try {
       await fn();
+      if (success) toast.success(success);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Update failed");
+      toast.error(e instanceof Error ? e.message : "Update failed");
     } finally {
       setBusy(false);
     }
@@ -93,25 +95,27 @@ export function ContactQuickActions({
       <div className="flex flex-wrap gap-1">
         {status === "not_contacted" ? (
           <>
-            {miniBtn("SMS", () => run(() => postContact("sms")), {
+            {miniBtn("SMS", () => run(() => postContact("sms"), "SMS logged"), {
               title: "Log SMS outreach",
               disabled: !parcel.owner_phone,
             })}
-            {miniBtn("Email", () => run(() => postContact("email")), {
+            {miniBtn("Email", () => run(() => postContact("email"), "Email logged"), {
               title: "Log email outreach",
               disabled: !parcel.owner_email,
             })}
-            {miniBtn("Call", () => run(() => postContact("call")), {
+            {miniBtn("Call", () => run(() => postContact("call"), "Call logged"), {
               title: "Log call",
             })}
             {miniBtn(
               "Skip",
               () =>
-                run(() =>
-                  patch({
-                    contact_status: "follow_up",
-                    last_contacted_at: nowIso(),
-                  })
+                run(
+                  () =>
+                    patch({
+                      contact_status: "follow_up",
+                      last_contacted_at: nowIso(),
+                    }),
+                  "Moved to follow-up"
                 ),
               { title: "Defer to follow-up (no message sent)" }
             )}
@@ -123,21 +127,25 @@ export function ContactQuickActions({
             {miniBtn(
               "Follow-Up",
               () =>
-                run(() =>
-                  patch({
-                    contact_status: "follow_up",
-                    last_contacted_at: nowIso(),
-                  })
+                run(
+                  () =>
+                    patch({
+                      contact_status: "follow_up",
+                      last_contacted_at: nowIso(),
+                    }),
+                  "Moved to follow-up"
                 )
             )}
             {miniBtn(
               "Do Not Contact",
               () =>
-                run(() =>
-                  patch({
-                    contact_status: "do_not_contact",
-                    last_contacted_at: nowIso(),
-                  })
+                run(
+                  () =>
+                    patch({
+                      contact_status: "do_not_contact",
+                      last_contacted_at: nowIso(),
+                    }),
+                  "Marked do not contact"
                 )
             )}
           </>
@@ -145,13 +153,13 @@ export function ContactQuickActions({
 
         {status === "follow_up" ? (
           <>
-            {miniBtn("SMS", () => run(() => postContact("sms", "contacted")), {
+            {miniBtn("SMS", () => run(() => postContact("sms", "contacted"), "SMS logged"), {
               disabled: !parcel.owner_phone,
             })}
-            {miniBtn("Email", () => run(() => postContact("email", "contacted")), {
+            {miniBtn("Email", () => run(() => postContact("email", "contacted"), "Email logged"), {
               disabled: !parcel.owner_email,
             })}
-            {miniBtn("Call", () => run(() => postContact("call", "contacted")))}
+            {miniBtn("Call", () => run(() => postContact("call", "contacted"), "Call logged"))}
           </>
         ) : null}
 

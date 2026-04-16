@@ -12,6 +12,7 @@ import {
   scoreColor,
 } from "@/lib/desirability";
 import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
+import { EMPTY_PARCELS_HINT } from "@/lib/emptyStateCopy";
 import { Badge, Button } from "@/components/ui/Primitives";
 import { ContactQuickActions } from "./ContactQuickActions";
 import { LLCSkipTraceModal } from "./LLCSkipTraceModal";
@@ -136,6 +137,127 @@ function ParcelTableRow({
   );
 }
 
+function ParcelMobileCard({
+  p,
+  selected,
+  scoringMode,
+  scoringWeights,
+  onToggleSelect,
+  onRowClick,
+  onParcelUpdated,
+  onSkipTraceClick,
+}: {
+  p: Parcel;
+  selected: boolean;
+  scoringMode: ScoringMode;
+  scoringWeights: ScoringWeightsBundle;
+  onToggleSelect: (id: string) => void;
+  onRowClick: (parcel: Parcel) => void;
+  onParcelUpdated?: (parcel: Parcel) => void;
+  onSkipTraceClick: (parcel: Parcel) => void;
+}) {
+  const s = getDisplayScore(p, scoringMode, scoringWeights);
+  const emoji = desirabilityTierEmoji(s);
+  const ownerType = classifyOwnerType(p.owner_name);
+
+  return (
+    <article
+      onClick={() => onRowClick(p)}
+      className="cursor-pointer rounded-xl border border-ink-200 bg-white p-4 shadow-soft transition hover:border-accent-300"
+    >
+      <div className="flex gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(p.id)}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-1 h-4 w-4 shrink-0 rounded border-ink-300 text-accent-600 focus:ring-accent-200"
+          aria-label={`Select ${p.owner_name}`}
+        />
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="font-display font-semibold leading-snug text-ink-900">{p.owner_name}</div>
+              <div className="mt-0.5 text-xs leading-relaxed text-ink-500">{p.property_address}</div>
+            </div>
+            <span
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${scoreColor(
+                s
+              )}`}
+              title={
+                s >= 85
+                  ? "High desirability (85+)"
+                  : s >= 60
+                    ? "Medium (60–84)"
+                    : "Lower priority (<60)"
+              }
+            >
+              <span aria-hidden>{emoji}</span>
+              {s.toFixed(1)}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <Badge
+              className={`inline-flex items-center border text-xs font-semibold ${ownerTypeBadgeClass(
+                ownerType.kind
+              )}`}
+            >
+              <span className="select-none" aria-hidden>
+                {ownerType.emoji}
+              </span>
+              <span className="ml-1">{ownerType.label}</span>
+            </Badge>
+            {ownerType.kind === "llc" ? (
+              hasNeedsSkipTraceNote(p.contact_notes) ? (
+                <span className="text-[10px] font-medium uppercase tracking-wide text-accent-700">
+                  Skip trace noted
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="px-2 py-1 text-[11px] font-semibold"
+                  onClick={() => onSkipTraceClick(p)}
+                >
+                  Skip trace
+                </Button>
+              )
+            ) : null}
+          </div>
+
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3">
+            <div className="col-span-2 sm:col-span-1">
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">Mailing</dt>
+              <dd className="mt-0.5 text-ink-700">{p.mailing_address ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">Value</dt>
+              <dd className="mt-0.5 font-mono tabular-nums text-ink-800">
+                {formatCurrency(p.market_value)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">Units</dt>
+              <dd className="mt-0.5 font-mono tabular-nums text-ink-700">{p.unit_count ?? "—"}</dd>
+            </div>
+          </dl>
+
+          <div>
+            <Badge className="border-ink-200/80 bg-white text-ink-700">
+              {formatVacancy(p.vacancy_status)}
+            </Badge>
+          </div>
+
+          <div className="border-t border-ink-100 pt-3" onClick={(e) => e.stopPropagation()}>
+            <ContactQuickActions parcel={p} onUpdated={(u) => onParcelUpdated?.(u)} />
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function TableSkeleton({ rows: rowCount }: { rows: number }) {
   return (
     <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-soft">
@@ -195,6 +317,29 @@ function TableSkeleton({ rows: rowCount }: { rows: number }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function MobileCardsSkeleton({ count }: { count: number }) {
+  const n = Math.min(count, 8);
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: n }).map((_, i) => (
+        <div
+          key={i}
+          className="animate-pulse rounded-xl border border-ink-200 bg-white p-4 shadow-soft"
+        >
+          <div className="flex gap-3">
+            <div className="mt-1 h-4 w-4 shrink-0 rounded bg-ink-100" />
+            <div className="min-w-0 flex-1 space-y-3">
+              <div className="h-4 w-48 max-w-full rounded bg-ink-100" />
+              <div className="h-3 w-full max-w-xs rounded bg-ink-50" />
+              <div className="h-8 w-24 rounded-lg bg-ink-50" />
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -260,7 +405,17 @@ export function ParcelTable({
     return (
       <>
         {skipTraceModal}
-        <TableSkeleton rows={skeletonRows} />
+        <div className="hidden lg:block">
+          <TableSkeleton rows={skeletonRows} />
+        </div>
+        <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-soft lg:hidden">
+          <div className="border-b border-ink-100 px-4 py-3">
+            <div className="h-4 w-28 animate-pulse rounded bg-ink-100" />
+          </div>
+          <div className="p-3">
+            <MobileCardsSkeleton count={skeletonRows} />
+          </div>
+        </div>
       </>
     );
   }
@@ -269,13 +424,9 @@ export function ParcelTable({
     return (
       <>
         {skipTraceModal}
-        <div className="rounded-xl border border-dashed border-ink-200 bg-white px-8 py-16 text-center shadow-soft">
-          <div className="font-display text-lg font-semibold text-ink-800">
-            No records match
-          </div>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-ink-500">
-            Adjust filters or widen your criteria to see more parcels.
-          </p>
+        <div className="rounded-xl border border-dashed border-ink-200 bg-white px-6 py-14 text-center shadow-soft sm:px-8 sm:py-16">
+          <div className="font-display text-lg font-semibold text-ink-800">No parcels match</div>
+          <p className="mx-auto mt-2 max-w-md text-sm text-ink-500">{EMPTY_PARCELS_HINT}</p>
         </div>
       </>
     );
@@ -306,7 +457,7 @@ export function ParcelTable({
           </div>
         </div>
 
-        <div ref={parentRef} className="max-h-[min(70vh,780px)] overflow-auto">
+        <div ref={parentRef} className="hidden max-h-[min(70vh,780px)] overflow-auto lg:block">
           <table
             className="w-full text-sm"
             aria-busy={loading && rows.length > 0}
@@ -368,6 +519,37 @@ export function ParcelTable({
               ) : null}
             </tbody>
           </table>
+        </div>
+
+        <div
+          className={`space-y-3 p-3 lg:hidden ${
+            loading && rows.length > 0 ? "opacity-60" : ""
+          }`}
+          aria-busy={loading && rows.length > 0}
+        >
+          <div className="flex items-center justify-between rounded-lg border border-ink-100 bg-ink-50/80 px-3 py-2">
+            <span className="text-xs font-medium text-ink-600">Select all on page</span>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() => onToggleAll(rows.map((r) => r.id))}
+              className="h-4 w-4 rounded border-ink-300 text-accent-600 focus:ring-accent-200"
+              aria-label="Select all on page"
+            />
+          </div>
+          {rows.map((p) => (
+            <ParcelMobileCard
+              key={p.id}
+              p={p}
+              selected={selected.has(p.id)}
+              scoringMode={scoringMode}
+              scoringWeights={scoringWeights}
+              onToggleSelect={onToggleSelect}
+              onRowClick={onRowClick}
+              onParcelUpdated={onParcelUpdated}
+              onSkipTraceClick={setSkipModalParcel}
+            />
+          ))}
         </div>
       </div>
     </>

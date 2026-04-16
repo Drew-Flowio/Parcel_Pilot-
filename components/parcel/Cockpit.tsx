@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import type { CockpitMode, Parcel, ParcelFilters, ScoringMode } from "@/lib/types";
 import type { ScoringWeightsBundle } from "@/lib/scoringWeights";
 import { cockpitModeToViewSlice, viewSliceToCockpitMode } from "@/lib/cockpitMode";
@@ -114,7 +115,7 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
           const res = await fetch(`/api/parcels/portfolio?${qs}`);
           const json = (await res.json()) as PortfolioPayload & { error?: string };
           if (!res.ok) {
-            console.error(json.error ?? "Portfolio fetch failed");
+            toast.error(json.error ?? "Portfolio fetch failed");
             setPortfolioPayload(null);
             return;
           }
@@ -123,7 +124,11 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
           setTotal(json.total ?? 0);
         } else {
           const res = await fetch(`/api/parcels?${qs}`);
-          const json = await res.json();
+          const json = (await res.json()) as { rows?: Parcel[]; total?: number; error?: string };
+          if (!res.ok) {
+            toast.error(json.error ?? "Could not load parcels");
+            return;
+          }
           setRows(json.rows ?? []);
           setTotal(json.total ?? 0);
           setPortfolioPayload(null);
@@ -166,7 +171,7 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
         const res = await fetch(`/api/parcels/portfolio?${qs}`);
         const json = (await res.json()) as PortfolioPayload & { error?: string };
         if (!res.ok) {
-          window.alert(json.error ?? "Portfolio fetch failed");
+          toast.error(json.error ?? "Portfolio fetch failed");
           return;
         }
         setPortfolioPayload(json);
@@ -174,7 +179,11 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
         setTotal(json.total ?? 0);
       } else {
         const res = await fetch(`/api/parcels?${qs}`);
-        const json = await res.json();
+        const json = (await res.json()) as { rows?: Parcel[]; total?: number; error?: string };
+        if (!res.ok) {
+          toast.error(json.error ?? "Could not load parcels");
+          return;
+        }
         setRows(json.rows ?? []);
         setTotal(json.total ?? 0);
         setPortfolioPayload(null);
@@ -285,6 +294,7 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
 
   const bulkMarkContacted = async () => {
     if (selected.size === 0) return;
+    const n = selected.size;
     setBulkBusy(true);
     try {
       const res = await fetch("/api/parcels/bulk", {
@@ -297,11 +307,14 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
       });
       const json = await res.json();
       if (!res.ok) {
-        window.alert((json as { error?: string }).error ?? "Bulk update failed");
+        toast.error((json as { error?: string }).error ?? "Bulk update failed");
         return;
       }
       await refetchRows();
       setSelected(new Set());
+      toast.success(
+        `Marked ${n.toLocaleString()} parcel${n === 1 ? "" : "s"} as contacted`
+      );
     } finally {
       setBulkBusy(false);
     }
@@ -321,15 +334,17 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
       });
       const json = await res.json();
       if (!res.ok) {
-        window.alert((json as { error?: string }).error ?? "Bulk update failed");
+        toast.error((json as { error?: string }).error ?? "Bulk update failed");
         return;
       }
       const n = (json as { updated?: number }).updated ?? 0;
-      window.alert(
-        n > 0
-          ? `Added skip-trace note to ${n} LLC parcel(s). Non-LLC or already tagged rows were skipped.`
-          : "No LLC rows needed an update (already noted or not LLC)."
-      );
+      if (n > 0) {
+        toast.success(
+          `Added skip-trace note to ${n} LLC parcel(s). Non-LLC or already tagged rows were skipped.`
+        );
+      } else {
+        toast.message("No LLC rows needed an update (already noted or not LLC).");
+      }
       await refetchRows();
     } finally {
       setBulkBusy(false);
@@ -352,15 +367,17 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
       });
       const json = await res.json();
       if (!res.ok) {
-        window.alert((json as { error?: string }).error ?? "Bulk update failed");
+        toast.error((json as { error?: string }).error ?? "Bulk update failed");
         return;
       }
       const n = (json as { updated?: number }).updated ?? 0;
-      window.alert(
-        n > 0
-          ? `Added skip-trace note to ${n} LLC parcel(s) in this portfolio load. Non-LLC or already tagged rows were skipped.`
-          : "No LLC rows needed an update (already noted or not LLC)."
-      );
+      if (n > 0) {
+        toast.success(
+          `Added skip-trace note to ${n} LLC parcel(s) in this portfolio load. Non-LLC or already tagged rows were skipped.`
+        );
+      } else {
+        toast.message("No LLC rows needed an update (already noted or not LLC).");
+      }
       await refetchRows();
     } finally {
       setBulkBusy(false);
@@ -455,9 +472,17 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
               type="button"
               variant="secondary"
               className="shrink-0"
+              aria-expanded={mobileFiltersOpen}
+              aria-controls="mobile-filters-panel"
+              id="mobile-filters-trigger"
               onClick={() => setMobileFiltersOpen(true)}
             >
-              Filters
+              <span className="flex flex-col items-start gap-0.5 text-left leading-tight">
+                <span>Filters</span>
+                <span className="text-[10px] font-normal text-ink-500">
+                  Refine list
+                </span>
+              </span>
             </Button>
           </div>
 
@@ -725,14 +750,31 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
 
       {/* Mobile: full-screen filter drawer */}
       {mobileFiltersOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Filters">
-          <div className="drawer-enter absolute inset-0 flex flex-col bg-white shadow-pop">
-            <div className="flex items-center justify-between border-b border-ink-100 px-4 py-4">
+        <div
+          className="fixed inset-0 z-50 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mobile-filters-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-ink-950/30 backdrop-blur-[1px]"
+            aria-label="Close filters"
+            onClick={() => setMobileFiltersOpen(false)}
+          />
+          <div
+            id="mobile-filters-panel"
+            className="drawer-enter absolute bottom-0 left-0 right-0 top-[12vh] z-10 flex max-h-[88vh] flex-col overflow-hidden rounded-t-2xl border border-ink-200 bg-white shadow-pop"
+          >
+            <div className="relative flex items-center justify-between border-b border-ink-100 px-4 pb-4 pt-6">
+              <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-ink-200 lg:hidden" aria-hidden />
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
                   Refine list
                 </div>
-                <div className="text-lg font-semibold text-ink-900">Filters</div>
+                <div id="mobile-filters-title" className="text-lg font-semibold text-ink-900">
+                  Filters
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <button

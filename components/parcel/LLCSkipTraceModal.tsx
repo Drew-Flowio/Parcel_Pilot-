@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useId, useState } from "react";
+import { toast } from "sonner";
 import type { Parcel } from "@/lib/types";
 import {
   appendNeedsSkipTraceNote,
@@ -49,12 +50,15 @@ export function LLCSkipTraceModal({
       });
       const json = await res.json();
       if (!res.ok) {
-        window.alert((json as { error?: string }).error ?? "Could not save note.");
+        toast.error((json as { error?: string }).error ?? "Could not save note.");
         return;
       }
       if (json.parcel) {
+        toast.success("Skip trace noted");
         onMarked(json.parcel as Parcel);
         onClose();
+      } else {
+        toast.error("Unexpected response");
       }
     } finally {
       setBusy(false);
