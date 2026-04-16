@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { PARCEL_SORT_KEYS } from "./parcelSortOptions";
 import type { ContactStatus, ParcelFilters, VacancyStatus, ViewSlice } from "./types";
 
 const VACANCY_VALUES: VacancyStatus[] = [
@@ -48,6 +49,13 @@ export function parseFilters(
     (CONTACT_VALUES as string[]).includes(v)
   );
 
+  const rawSort = get("sort");
+  const sort: ParcelFilters["sort"] =
+    rawSort != null &&
+    (PARCEL_SORT_KEYS as string[]).includes(rawSort)
+      ? (rawSort as ParcelFilters["sort"])
+      : "desirability_score";
+
   return {
     view: (
       ["top", "high_value", "honorable_mentions"] as ViewSlice[]
@@ -62,7 +70,7 @@ export function parseFilters(
     vacancy: vacancy.length ? vacancy : undefined,
     minDaysVacant: num("minDaysVacant"),
     contactStatus: contactStatus.length ? contactStatus : undefined,
-    sort: (get("sort") as ParcelFilters["sort"]) || "desirability_score",
+    sort,
     page: num("page") ?? 1,
     pageSize: num("pageSize") ?? 25,
   };

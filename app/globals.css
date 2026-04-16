@@ -47,3 +47,40 @@ body::before {
   to   { transform: translateX(0); }
 }
 .drawer-enter { animation: slide-in-right 220ms ease-out; }
+
+/* Dual range slider thumbs (stacked inputs) */
+.dual-range-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.dual-range-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  border: 2px solid #11151f;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(17, 21, 31, 0.2);
+  cursor: pointer;
+}
+.dual-range-thumb::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  border: 2px solid #11151f;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(17, 21, 31, 0.2);
+  cursor: pointer;
+}
+.dual-range-thumb::-webkit-slider-runnable-track {
+  height: 0;
+  background: transparent;
+}
+.dual-range-thumb::-moz-range-track {
+  height: 0;
+  background: transparent;
+}

@@ -8,7 +8,8 @@ import { CockpitModeToggle } from "./CockpitModeToggle";
 import { ParcelFiltersForm } from "./ParcelFilters";
 import { ParcelTable } from "./ParcelTable";
 import { ParcelDetailDrawer } from "./ParcelDetailDrawer";
-import { Button } from "@/components/ui/Primitives";
+import { Button, Label, Select } from "@/components/ui/Primitives";
+import { PARCEL_SORT_OPTIONS } from "@/lib/parcelSortOptions";
 import { parseDesirabilityScore } from "@/lib/desirability";
 
 interface InitialPayload {
@@ -174,7 +175,7 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
         {/* Desktop: collapsible filter rail */}
         <aside
           className={`relative hidden shrink-0 flex-col border-r border-ink-200 bg-white transition-[width] duration-200 ease-out lg:flex ${
-            sidebarCollapsed ? "w-14" : "w-[20rem]"
+            sidebarCollapsed ? "w-14" : "min-w-[22rem] w-[22rem]"
           }`}
         >
           {sidebarCollapsed ? (
@@ -276,15 +277,39 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
               </div>
             </div>
 
-            <ParcelTable
-              rows={rows}
-              loading={loading}
-              selected={selected}
-              onToggleSelect={toggleSelect}
-              onToggleAll={toggleAll}
-              onRowClick={(p) => setActive(p)}
-              totalLabel={tableTotalLabel}
-            />
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2 rounded-xl border border-ink-200 bg-white px-4 py-3 shadow-soft sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <Label htmlFor="parcel-sort" className="!mb-0 shrink-0 sm:pt-0.5">
+                  Sort by
+                </Label>
+                <Select
+                  id="parcel-sort"
+                  className="sm:max-w-xs sm:flex-1"
+                  value={filters.sort ?? "desirability_score"}
+                  onChange={(e) =>
+                    updateFilters({
+                      sort: e.target.value as ParcelFilters["sort"],
+                    })
+                  }
+                >
+                  {PARCEL_SORT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <ParcelTable
+                rows={rows}
+                loading={loading}
+                selected={selected}
+                onToggleSelect={toggleSelect}
+                onToggleAll={toggleAll}
+                onRowClick={(p) => setActive(p)}
+                totalLabel={tableTotalLabel}
+              />
+            </div>
 
             {pageCount > 1 ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3 text-sm shadow-soft">

@@ -81,9 +81,16 @@ export function Select({
   );
 }
 
-export function Label({ children }: { children: React.ReactNode }) {
+export function Label({
+  children,
+  className = "",
+  ...rest
+}: { children: React.ReactNode; className?: string } & React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (
-    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+    <label
+      className={`mb-1 block text-[11px] font-semibold uppercase tracking-wider text-ink-500 ${className}`}
+      {...rest}
+    >
       {children}
     </label>
   );
