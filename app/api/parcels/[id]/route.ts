@@ -5,6 +5,8 @@ import type { Parcel } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 const ALLOWED: (keyof Parcel)[] = [
+  "owner_name",
+  "mailing_address",
   "owner_phone",
   "owner_email",
   "contact_status",

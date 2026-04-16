@@ -2,6 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSupabaseServer } from "@/lib/supabaseClient";
+import { fetchScoringWeightsBundle } from "@/lib/scoringSettingsServer";
 import { ParcelPilotLogo } from "@/components/ui/Logo";
 import { ParcelDetailClient } from "./ParcelDetailClient";
 import type { Parcel } from "@/lib/types";
@@ -10,10 +11,18 @@ export const dynamic = "force-dynamic";
 
 export default async function ParcelPage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams: Record<string, string | string[] | undefined>;
 }) {
   const supabase = getSupabaseServer();
+  const scoringWeights = await fetchScoringWeightsBundle(supabase);
+  const spMode = Array.isArray(searchParams.scoringMode)
+    ? searchParams.scoringMode[0]
+    : searchParams.scoringMode;
+  const scoringMode = spMode === "flipper" ? "flipper" : "pm";
+
   const { data, error } = await supabase
     .from("parcels")
     .select("*")
@@ -36,7 +45,11 @@ export default async function ParcelPage({
         </Link>
       </header>
 
-      <ParcelDetailClient initial={data as Parcel} />
+      <ParcelDetailClient
+        initial={data as Parcel}
+        scoringWeights={scoringWeights}
+        scoringMode={scoringMode}
+      />
     </div>
   );
 }

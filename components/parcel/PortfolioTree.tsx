@@ -1,7 +1,9 @@
 "use client";
 
 import React from "react";
-import type { Parcel } from "@/lib/types";
+import type { Parcel, ScoringMode } from "@/lib/types";
+import type { ScoringWeightsBundle } from "@/lib/scoringWeights";
+import { getDisplayScore } from "@/lib/desirability";
 
 export interface PortfolioTreeGroup {
   key: string;
@@ -14,10 +16,14 @@ export function PortfolioTree({
   groups,
   loading,
   onRowClick,
+  scoringMode = "pm",
+  scoringWeights,
 }: {
   groups: PortfolioTreeGroup[];
   loading: boolean;
   onRowClick: (p: Parcel) => void;
+  scoringMode?: ScoringMode;
+  scoringWeights: ScoringWeightsBundle;
 }) {
   if (loading) {
     return (
@@ -59,7 +65,8 @@ export function PortfolioTree({
                   >
                     <span className="font-mono text-ink-900">{p.property_address}</span>
                     <span className="text-xs text-ink-500">
-                      (Score: {p.desirability_score})
+                      (Score:{" "}
+                      {getDisplayScore(p, scoringMode, scoringWeights).toFixed(1)})
                     </span>
                   </button>
                 </li>

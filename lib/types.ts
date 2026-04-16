@@ -46,6 +46,9 @@ export type ViewSlice = "top" | "high_value" | "honorable_mentions";
 /** Portfolio tree grouping dimension (URL: `groupBy=owner` | `groupBy=mailing`). */
 export type PortfolioGroupBy = "owner" | "mailing";
 
+/** Scoring preset from URL `scoringMode=pm|flipper` (weights in `app_settings`). */
+export type ScoringMode = "pm" | "flipper";
+
 /**
  * Workspace mode — maps to `ViewSlice` for list queries (`lib/cockpitMode.ts`).
  *
@@ -82,4 +85,6 @@ export interface ParcelFilters {
   /** URL: `portfolio=1` — tree layout; does not affect SQL (stripped in `filtersForQuery`). */
   portfolio?: boolean;
   groupBy?: PortfolioGroupBy;
+  /** URL: `scoringMode=flipper` — UI score uses flipper weights (DB column stays PM baseline). */
+  scoringMode?: ScoringMode;
 }

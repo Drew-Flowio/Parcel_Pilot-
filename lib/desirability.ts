@@ -1,4 +1,6 @@
-import type { Parcel } from "./types";
+import type { ModeWeights, ScoringWeightsBundle } from "./scoringWeights";
+import { LEGACY_SQL_WEIGHTS, weightsForMode } from "./scoringWeights";
+import type { Parcel, ScoringMode } from "./types";
 
 export interface ScoreFactor {
   label: string;
@@ -13,8 +15,6 @@ export interface ScoreBreakdown {
   rawSum: number;
   factors: ScoreFactor[];
 }
-
-const RAW_MAX = 70;
 
 /** Coerce PostgREST / JSON numbers (sometimes strings) to finite number or null. */
 export function toFiniteNumber(value: unknown): number | null {
@@ -34,10 +34,11 @@ export function parseDesirabilityScore(value: unknown): number | null {
   return Math.round(Math.min(100, n) * 10) / 10;
 }
 
-/** Matches SQL `calculate_desirability_score`: raw points sum to ≤70, then ÷70×100, capped at 100. */
-function normalizeRawToScore(raw: number): number {
+/** Scale raw sum to 0–100 using mode-specific `rawMax` (same role as SQL’s ÷70×100). */
+function normalizeRawToScore(raw: number, rawMax: number): number {
   const clampedRaw = Math.max(0, raw);
-  const scaled = (clampedRaw / RAW_MAX) * 100;
+  if (rawMax <= 0) return 0;
+  const scaled = (clampedRaw / rawMax) * 100;
   return Math.round(Math.min(100, scaled) * 10) / 10;
 }
 
@@ -51,12 +52,17 @@ export function formatCurrency(n: number | null | undefined): string {
 }
 
 /**
- * Mirrors Postgres `calculate_desirability_score` for UI breakdowns.
- * Weights: absentee 25, days_vacant up to 20, units 4–80 +15, MV $150k–$5M +10, professionally managed -20.
- * Note: `vacancy_status` is passed in SQL but not used in the formula — only `days_vacant` affects the vacancy term.
+ * Desirability breakdown for UI. Without `opts`, matches Postgres `calculate_desirability_score`.
+ * With `opts`, uses `app_settings` weights (PM vs Flipper).
  */
-export function computeDesirabilityBreakdown(p: Partial<Parcel>): ScoreBreakdown {
+export function computeDesirabilityBreakdown(
+  p: Partial<Parcel>,
+  opts?: { mode: ScoringMode; weights: ModeWeights }
+): ScoreBreakdown {
   const factors: ScoreFactor[] = [];
+  const legacy = opts == null;
+  const mode = opts?.mode ?? "pm";
+  const w = opts?.weights ?? LEGACY_SQL_WEIGHTS;
 
   if (p.contact_status === "do_not_contact") {
     factors.push({
@@ -67,68 +73,91 @@ export function computeDesirabilityBreakdown(p: Partial<Parcel>): ScoreBreakdown
     return { computedTotal: 0, rawSum: 0, factors };
   }
 
+  const vacantLabel = legacy
+    ? "Days vacant"
+    : mode === "flipper"
+      ? "Distress"
+      : "Vacancy";
+  const unitLabel = legacy
+    ? "Unit count"
+    : mode === "flipper"
+      ? "Small multi"
+      : "Unit sweet spot";
+
+  const distressCap =
+    mode === "flipper" && !legacy
+      ? w.distressMax ?? w.vacancyDaysMax
+      : w.vacancyDaysMax;
+
+  const unitCap =
+    mode === "flipper" && !legacy
+      ? w.smallMultiMax ?? w.unitSweetSpotMax
+      : w.unitSweetSpotMax;
+
   let absPts = 0;
   if (p.is_absentee_owner === true) {
-    absPts = 25;
+    absPts = w.absenteeMax;
     factors.push({
       label: "Absentee owner",
-      points: 25,
-      detail: "is_absentee_owner is true → +25 (full weight toward PM opportunity).",
+      points: Math.round(absPts * 10) / 10,
+      detail: `is_absentee_owner is true → +${w.absenteeMax} (absentee max for this mode).`,
     });
   } else {
     factors.push({
       label: "Absentee owner",
       points: 0,
-      detail: `is_absentee_owner is ${p.is_absentee_owner == null ? "null" : "false"} — no +25 (same as SQL IS TRUE check).`,
+      detail: `is_absentee_owner is ${p.is_absentee_owner == null ? "null" : "false"} — no absentee points.`,
     });
   }
 
   const daysRaw = toFiniteNumber(p.days_vacant);
   const days = Math.max(0, daysRaw ?? 0);
-  const dvPts = Math.min(20, (days / 365) * 20);
+  const dvPts = Math.min(distressCap, (days / 365) * distressCap);
   factors.push({
-    label: "Days vacant",
+    label: vacantLabel,
     points: Math.round(dvPts * 10) / 10,
     detail:
       daysRaw == null
-        ? "days_vacant is null — treated as 0 days; linear ramp to 20 pts at 365+ days."
-        : `days_vacant=${days}; up to 20 pts linear to 365 days (min(coalesce(days,0)/365×20, 20)).`,
+        ? "days_vacant is null — treated as 0 days; linear ramp to max over 365 days."
+        : `days_vacant=${days}; up to ${distressCap} pts linear to 365 days.`,
   });
 
   factors.push({
     label: "Vacancy status (recorded)",
     points: 0,
-    detail: `vacancy_status="${p.vacancy_status ?? "unknown"}" — not used in the current SQL formula (only days_vacant affects this bucket).`,
+    detail: `vacancy_status="${p.vacancy_status ?? "unknown"}" — recorded for context; scoring uses days_vacant (and mode weights).`,
   });
 
   const units = toFiniteNumber(p.unit_count);
   let ucPts = 0;
-  if (units != null && units >= 4 && units <= 80) {
-    ucPts = 15;
+  const inUnitBand =
+    units != null && units >= w.unitMin && units <= w.unitMax;
+  if (inUnitBand) {
+    ucPts = unitCap;
     factors.push({
-      label: "Unit count",
-      points: 15,
-      detail: `unit_count=${units} — within 4–80 (sweet spot) → +15.`,
+      label: unitLabel,
+      points: Math.round(ucPts * 10) / 10,
+      detail: `unit_count=${units} — within ${w.unitMin}–${w.unitMax} → +${unitCap}.`,
     });
   } else {
     factors.push({
-      label: "Unit count",
+      label: unitLabel,
       points: 0,
       detail:
         units == null
-          ? "unit_count is null — outside the 4–80 band for scoring."
-          : `unit_count=${units} — outside 4–80 — no unit bonus.`,
+          ? `unit_count is null — outside ${w.unitMin}–${w.unitMax} band.`
+          : `unit_count=${units} — outside ${w.unitMin}–${w.unitMax} — no unit bonus.`,
     });
   }
 
   const mv = toFiniteNumber(p.market_value);
   let mvPts = 0;
-  if (mv != null && mv >= 150_000 && mv <= 5_000_000) {
-    mvPts = 10;
+  if (mv != null && mv >= w.marketValueMin && mv <= w.marketValueMax) {
+    mvPts = w.marketValuePoints;
     factors.push({
       label: "Market value",
-      points: 10,
-      detail: `market_value=${formatCurrency(mv)} — within $150k–$5M → +10.`,
+      points: Math.round(mvPts * 10) / 10,
+      detail: `market_value=${formatCurrency(mv)} — within range → +${w.marketValuePoints}.`,
     });
   } else {
     factors.push({
@@ -137,17 +166,18 @@ export function computeDesirabilityBreakdown(p: Partial<Parcel>): ScoreBreakdown
       detail:
         mv == null
           ? "market_value is null — no MV bonus."
-          : `market_value=${formatCurrency(mv)} — outside $150k–$5M — no MV bonus.`,
+          : `market_value=${formatCurrency(mv)} — outside configured range — no MV bonus.`,
     });
   }
 
   let pmPts = 0;
+  const pen = w.professionallyManagedPenalty;
   if (p.is_professionally_managed === true) {
-    pmPts = -20;
+    pmPts = pen;
     factors.push({
       label: "Professionally managed",
-      points: -20,
-      detail: "is_professionally_managed is true — incumbent PM penalty −20.",
+      points: Math.round(pmPts * 10) / 10,
+      detail: `is_professionally_managed is true — penalty ${pen}.`,
     });
   } else {
     factors.push({
@@ -162,9 +192,67 @@ export function computeDesirabilityBreakdown(p: Partial<Parcel>): ScoreBreakdown
 
   const raw = absPts + dvPts + ucPts + mvPts + pmPts;
   const rawSum = Math.round(Math.max(0, raw) * 10) / 10;
-  const computedTotal = normalizeRawToScore(raw);
+  const computedTotal = normalizeRawToScore(raw, w.rawMax);
 
   return { computedTotal, rawSum, factors };
+}
+
+/** Mode-adjusted 0–100 score (DB column remains Postgres baseline). */
+export function getDisplayScore(
+  p: Partial<Parcel>,
+  mode: ScoringMode,
+  bundle: ScoringWeightsBundle
+): number {
+  const weights = weightsForMode(bundle, mode);
+  return computeDesirabilityBreakdown(p, { mode, weights }).computedTotal;
+}
+
+/**
+ * Compact one-line summary for drawers and tooltips, e.g.
+ * "+25 absentee, +14.2 vacancy, +15 units, +10 value, −20 PM".
+ */
+export function formatScoreSummaryLine(factors: ScoreFactor[]): string {
+  if (factors.some((f) => f.label === "Do not contact")) {
+    return "Score set to 0 (do not contact)";
+  }
+
+  const short = (label: string) => {
+    switch (label) {
+      case "Absentee owner":
+        return "absentee";
+      case "Days vacant":
+      case "Vacancy":
+        return "vacancy";
+      case "Distress":
+        return "distress";
+      case "Unit count":
+      case "Unit sweet spot":
+        return "units";
+      case "Small multi":
+        return "small multi";
+      case "Market value":
+        return "value";
+      case "Professionally managed":
+        return "PM";
+      default:
+        return label;
+    }
+  };
+
+  const parts = factors
+    .filter((f) => {
+      if (f.label === "Vacancy status (recorded)") return false;
+      return Math.abs(f.points) > 0.0001;
+    })
+    .map((f) => {
+      const p = f.points;
+      const rounded =
+        Math.abs(p - Math.round(p)) < 0.05 ? Math.round(p) : Math.round(p * 10) / 10;
+      const sign = rounded > 0 ? "+" : "";
+      return `${sign}${rounded} ${short(f.label)}`;
+    });
+
+  return parts.length ? parts.join(", ") : "No scoring points applied (see breakdown below)";
 }
 
 /** Table / badge styling: 🟢 85+, 🟡 60–84, 🔴 &lt;60 */

@@ -1,9 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolvePageSize } from "./pagination";
 import { PARCEL_SORT_KEYS } from "./parcelSortOptions";
 import type {
   ContactStatus,
   ParcelFilters,
   PortfolioGroupBy,
+  ScoringMode,
   VacancyStatus,
   ViewSlice,
 } from "./types";
@@ -66,6 +68,9 @@ export function parseFilters(
   const groupBy: PortfolioGroupBy =
     rawGroupBy === "mailing" ? "mailing" : "owner";
 
+  const scoringMode: ScoringMode =
+    get("scoringMode") === "flipper" ? "flipper" : "pm";
+
   return {
     view: (
       ["top", "high_value", "honorable_mentions"] as ViewSlice[]
@@ -74,6 +79,7 @@ export function parseFilters(
       : "top",
     portfolio: get("portfolio") === "1",
     groupBy,
+    scoringMode,
     minValue: num("minValue"),
     maxValue: num("maxValue"),
     minUnits: num("minUnits"),
@@ -84,13 +90,13 @@ export function parseFilters(
     contactStatus: contactStatus.length ? contactStatus : undefined,
     sort,
     page: num("page") ?? 1,
-    pageSize: num("pageSize") ?? 25,
+    pageSize: resolvePageSize(num("pageSize")),
   };
 }
 
-/** Strip UI-only portfolio fields before SQL (`applyFilters`). */
+/** Strip UI-only fields before SQL (`applyFilters`). */
 export function filtersForQuery(f: ParcelFilters): ParcelFilters {
-  const { portfolio: _po, groupBy: _gb, ...rest } = f;
+  const { portfolio: _po, groupBy: _gb, scoringMode: _sm, ...rest } = f;
   return rest;
 }
 

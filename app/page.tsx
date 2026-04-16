@@ -1,6 +1,8 @@
 import React from "react";
 import { getSupabaseServer } from "@/lib/supabaseClient";
 import { applyFilters, filtersForQuery, parseFilters } from "@/lib/parcelQuery";
+import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
+import { fetchScoringWeightsBundle } from "@/lib/scoringSettingsServer";
 import { Cockpit } from "@/components/parcel/Cockpit";
 import { ParcelPilotLogo } from "@/components/ui/Logo";
 import type { Parcel } from "@/lib/types";
@@ -15,9 +17,10 @@ export default async function DashboardPage({
   const filters = parseFilters(searchParams);
   const queryFilters = filtersForQuery(filters);
   const supabase = getSupabaseServer();
+  const scoringWeights = await fetchScoringWeightsBundle(supabase);
 
   const page = queryFilters.page ?? 1;
-  const pageSize = queryFilters.pageSize ?? 25;
+  const pageSize = queryFilters.pageSize ?? DEFAULT_PAGE_SIZE;
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
@@ -77,7 +80,9 @@ export default async function DashboardPage({
           </div>
         ) : null}
 
-        {!errorMsg ? <Cockpit initial={{ rows, total, filters }} /> : null}
+        {!errorMsg ? (
+          <Cockpit initial={{ rows, total, filters, scoringWeights }} />
+        ) : null}
       </div>
     </div>
   );

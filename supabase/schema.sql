@@ -54,6 +54,15 @@ create index if not exists parcels_contact_status_idx on public.parcels (contact
 create index if not exists parcels_absentee_idx       on public.parcels (is_absentee_owner);
 
 -- ----------------------------------------------------------------
+-- App settings (JSON), e.g. scoring weights per mode — see migrations
+-- ----------------------------------------------------------------
+create table if not exists public.app_settings (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------
 -- Desirability scoring function (0–100)
 -- ----------------------------------------------------------------
 -- PM weights (max raw 70, scaled to 100): absentee 25, days_vacant up to 20,

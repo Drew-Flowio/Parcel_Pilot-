@@ -3,15 +3,12 @@
 import React from "react";
 import type { CockpitMode } from "@/lib/types";
 
-/**
- * Segments shown in the shell — property-management focus.
- * (`flipper_mode` exists on the type for future work; not listed here until that product slice ships.)
- */
 const PM_COCKPIT_MODES: { id: CockpitMode; label: string }[] = [
   { id: "top_targets", label: "Top Targets" },
   { id: "high_value_pm", label: "High Value PM" },
   { id: "small_buildings", label: "Small Buildings" },
   { id: "portfolio_view", label: "Portfolio View" },
+  { id: "flipper_mode", label: "Flipper" },
 ];
 
 export function CockpitModeToggle({

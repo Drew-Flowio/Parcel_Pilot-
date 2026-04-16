@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabaseClient";
 import { applyFilters, parseFilters } from "@/lib/parcelQuery";
+import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseServer();
 
   const page = filters.page ?? 1;
-  const pageSize = filters.pageSize ?? 25;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 

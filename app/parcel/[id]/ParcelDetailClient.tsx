@@ -1,11 +1,20 @@
 "use client";
 
 import React, { useState } from "react";
-import type { Parcel } from "@/lib/types";
+import type { Parcel, ScoringMode } from "@/lib/types";
+import type { ScoringWeightsBundle } from "@/lib/scoringWeights";
 import { ParcelDetailDrawer } from "@/components/parcel/ParcelDetailDrawer";
 import { Button } from "@/components/ui/Primitives";
 
-export function ParcelDetailClient({ initial }: { initial: Parcel }) {
+export function ParcelDetailClient({
+  initial,
+  scoringWeights,
+  scoringMode = "pm",
+}: {
+  initial: Parcel;
+  scoringWeights: ScoringWeightsBundle;
+  scoringMode?: ScoringMode;
+}) {
   const [parcel, setParcel] = useState<Parcel | null>(initial);
   const [closed, setClosed] = useState(false);
 
@@ -25,6 +34,8 @@ export function ParcelDetailClient({ initial }: { initial: Parcel }) {
       parcel={parcel}
       onClose={() => setClosed(true)}
       onUpdated={(p) => setParcel(p)}
+      scoringMode={scoringMode}
+      scoringWeights={scoringWeights}
     />
   );
 }

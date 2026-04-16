@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CockpitMode, Parcel, ParcelFilters } from "@/lib/types";
+import type { CockpitMode, Parcel, ParcelFilters, ScoringMode } from "@/lib/types";
+import type { ScoringWeightsBundle } from "@/lib/scoringWeights";
 import { cockpitModeToViewSlice, viewSliceToCockpitMode } from "@/lib/cockpitMode";
 import { CockpitModeToggle } from "./CockpitModeToggle";
 import { ParcelFiltersForm } from "./ParcelFilters";
@@ -11,12 +12,18 @@ import { PortfolioTree } from "./PortfolioTree";
 import { ParcelDetailDrawer } from "./ParcelDetailDrawer";
 import { Button, Label, Select } from "@/components/ui/Primitives";
 import { PARCEL_SORT_OPTIONS } from "@/lib/parcelSortOptions";
-import { parseDesirabilityScore } from "@/lib/desirability";
+import { getDisplayScore } from "@/lib/desirability";
+import {
+  DEFAULT_PAGE_SIZE,
+  FILTER_DEBOUNCE_MS,
+  PAGE_SIZE_OPTIONS,
+} from "@/lib/pagination";
 
 interface InitialPayload {
   rows: Parcel[];
   total: number;
   filters: ParcelFilters;
+  scoringWeights: ScoringWeightsBundle;
 }
 
 interface PortfolioPayload {
@@ -58,11 +65,11 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
   const [active, setActive] = useState<Parcel | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [cockpitMode, setCockpitMode] = useState<CockpitMode>(() =>
-    initial.filters.portfolio
-      ? "portfolio_view"
-      : viewSliceToCockpitMode(initial.filters.view)
-  );
+  const [cockpitMode, setCockpitMode] = useState<CockpitMode>(() => {
+    if (initial.filters.portfolio) return "portfolio_view";
+    if (initial.filters.scoringMode === "flipper") return "flipper_mode";
+    return viewSliceToCockpitMode(initial.filters.view);
+  });
   const [portfolioPayload, setPortfolioPayload] = useState<PortfolioPayload | null>(
     null
   );
@@ -86,6 +93,9 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
     if (f.page && f.page > 1) sp.set("page", String(f.page));
     if (f.portfolio) sp.set("portfolio", "1");
     if (f.groupBy === "mailing") sp.set("groupBy", "mailing");
+    if (f.scoringMode === "flipper") sp.set("scoringMode", "flipper");
+    const ps = f.pageSize ?? DEFAULT_PAGE_SIZE;
+    if (ps !== DEFAULT_PAGE_SIZE) sp.set("pageSize", String(ps));
     return sp.toString();
   }, []);
 
@@ -121,7 +131,7 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
       } finally {
         setLoading(false);
       }
-    }, 300);
+    }, FILTER_DEBOUNCE_MS);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -142,10 +152,7 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
     if (active) setMobileFiltersOpen(false);
   }, [active]);
 
-  const selectionResetKey = useMemo(() => {
-    const { page: _page, ...rest } = filters;
-    return JSON.stringify(rest);
-  }, [filters]);
+  const selectionResetKey = useMemo(() => JSON.stringify(filters), [filters]);
 
   useEffect(() => {
     setSelected(new Set());
@@ -185,9 +192,10 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
       view: cockpitModeToViewSlice(cockpitMode),
       sort: "desirability_score",
       page: 1,
-      pageSize: 25,
+      pageSize: DEFAULT_PAGE_SIZE,
       portfolio: cockpitMode === "portfolio_view",
       groupBy: "owner",
+      scoringMode: cockpitMode === "flipper_mode" ? "flipper" : "pm",
     });
   };
 
@@ -198,6 +206,12 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
       view: cockpitModeToViewSlice(mode),
       page: 1,
       portfolio: mode === "portfolio_view",
+      scoringMode:
+        mode === "flipper_mode"
+          ? "flipper"
+          : mode === "portfolio_view"
+            ? f.scoringMode ?? "pm"
+            : "pm",
     }));
   };
 
@@ -238,15 +252,24 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
     return `/api/parcels/export?${sp.toString()}`;
   }, [selected]);
 
+  const scoringModeEffective: ScoringMode = filters.scoringMode ?? "pm";
+
   const topTargetCount = useMemo(() => {
     const list =
       filters.portfolio && portfolioPayload
         ? portfolioPayload.groups.flatMap((g) => g.parcels)
         : rows;
     return list.filter(
-      (r) => (parseDesirabilityScore(r.desirability_score) ?? 0) >= 85
+      (r) =>
+        getDisplayScore(r, scoringModeEffective, initial.scoringWeights) >= 85
     ).length;
-  }, [filters.portfolio, portfolioPayload, rows]);
+  }, [
+    filters.portfolio,
+    portfolioPayload,
+    rows,
+    scoringModeEffective,
+    initial.scoringWeights,
+  ]);
 
   const onUpdated = (p: Parcel) => {
     setRows((rs) => rs.map((r) => (r.id === p.id ? p : r)));
@@ -345,7 +368,7 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
   };
 
   const page = filters.page ?? 1;
-  const pageSize = filters.pageSize ?? 25;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
   const tableTotalLabel =
@@ -357,7 +380,7 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
             ? ` (grouping uses first ${portfolioPayload.maxRows ?? 5000} rows)`
             : ""
         }`
-      : `${rows.length.toLocaleString()} on page · ${total.toLocaleString()} total`;
+      : `${rows.length.toLocaleString()} on page · ${total.toLocaleString()} total · ${pageSize}/page`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -484,6 +507,13 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
                     top targets in view
                   </span>
                 </h1>
+                {scoringModeEffective === "flipper" && !filters.portfolio ? (
+                  <p className="mt-2 max-w-2xl text-xs leading-relaxed text-ink-500">
+                    Desirability column uses Flipper weights from{" "}
+                    <code className="font-mono text-ink-600">app_settings</code>. Sorting by
+                    desirability still orders by the stored database score (PM baseline).
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <a href={exportFilteredUrl}>
@@ -616,6 +646,8 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
                   groups={portfolioPayload?.groups ?? []}
                   loading={loading}
                   onRowClick={(p) => setActive(p)}
+                  scoringMode={scoringModeEffective}
+                  scoringWeights={initial.scoringWeights}
                 />
               ) : (
                 <ParcelTable
@@ -629,17 +661,44 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
                     setRows((rs) => rs.map((r) => (r.id === p.id ? p : r)))
                   }
                   totalLabel={tableTotalLabel}
+                  scoringMode={scoringModeEffective}
+                  scoringWeights={initial.scoringWeights}
+                  pageSize={pageSize}
                 />
               )}
             </div>
 
-            {!filters.portfolio && pageCount > 1 ? (
+            {!filters.portfolio && total > 0 ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3 text-sm shadow-soft">
                 <span className="text-ink-500">
                   Page <span className="font-medium text-ink-800">{page}</span> of{" "}
                   <span className="font-medium text-ink-800">{pageCount}</span>
+                  <span className="text-ink-400"> · {total.toLocaleString()} total</span>
                 </span>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="page-size" className="!mb-0 text-xs text-ink-500">
+                      Rows / page
+                    </Label>
+                    <Select
+                      id="page-size"
+                      className="w-[5.5rem] py-1.5 text-sm"
+                      value={String(pageSize)}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          pageSize: Number(e.target.value),
+                          page: 1,
+                        }))
+                      }
+                    >
+                      {PAGE_SIZE_OPTIONS.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                   <Button
                     variant="secondary"
                     disabled={page <= 1}
@@ -704,6 +763,8 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
         parcel={active}
         onClose={() => setActive(null)}
         onUpdated={onUpdated}
+        scoringMode={scoringModeEffective}
+        scoringWeights={initial.scoringWeights}
       />
     </div>
   );
