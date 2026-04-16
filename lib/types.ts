@@ -43,6 +43,20 @@ export interface Parcel {
 
 export type ViewSlice = "top" | "high_value" | "honorable_mentions";
 
+/**
+ * Workspace mode — maps to `ViewSlice` for list queries (`lib/cockpitMode.ts`).
+ *
+ * **Product focus:** property-management lead gen (PM companies, portfolios, small multifamily).
+ * **`flipper_mode`:** reserved for a future investor/flip workflow; type + mapping stay in place,
+ * but the mode is not shown in the UI until we build that slice.
+ */
+export type CockpitMode =
+  | "top_targets"
+  | "high_value_pm"
+  | "small_buildings"
+  | "flipper_mode"
+  | "portfolio_view";
+
 export interface ParcelFilters {
   view: ViewSlice;
   minValue?: number;

@@ -68,17 +68,17 @@ export function ParcelDetailDrawer({
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — above filter drawer (z-50), below nothing */}
       <div
         onClick={onClose}
-        className="fixed inset-0 z-40 bg-ink-950/30 backdrop-blur-[2px]"
+        className="fixed inset-0 z-[60] bg-ink-950/35 backdrop-blur-[3px]"
       />
-      {/* Drawer */}
-      <aside className="drawer-enter fixed right-0 top-0 z-50 flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-ink-200 bg-white shadow-pop">
-        <div className="flex items-start justify-between gap-4 border-b border-ink-100 p-6">
+      {/* Record panel */}
+      <aside className="drawer-enter fixed right-0 top-0 z-[70] flex h-full w-full max-w-lg flex-col overflow-y-auto border-l border-ink-200 bg-white shadow-[0_0_0_1px_rgba(17,21,31,0.06),-12px_0_40px_rgba(17,21,31,0.12)]">
+        <div className="flex items-start justify-between gap-4 border-b border-ink-100 bg-gradient-to-b from-ink-50/80 to-white px-6 py-5">
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-              Parcel
+              Record
             </div>
             <h2 className="font-display text-2xl font-semibold leading-tight text-ink-900">
               {draft.owner_name}
@@ -91,10 +91,11 @@ export function ParcelDetailDrawer({
               <span className="text-[10px] uppercase tracking-wider">/100</span>
             </Badge>
             <button
+              type="button"
               onClick={onClose}
-              className="text-xs font-medium text-ink-500 hover:text-ink-900"
+              className="rounded-lg px-2 py-1 text-xs font-semibold text-ink-500 hover:bg-ink-100 hover:text-ink-900"
             >
-              Close ✕
+              Close
             </button>
           </div>
         </div>

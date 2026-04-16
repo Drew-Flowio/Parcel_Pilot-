@@ -57,7 +57,7 @@ parcel-pilot/
 │   │   └── Primitives.tsx            # Card, Button, Input, Select, Badge, etc.
 │   └── parcel/
 │       ├── Cockpit.tsx               # Owns filter state, URL sync, fetching
-│       ├── ParcelViewToggle.tsx      # Top / High Value / Small but Juicy
+│       ├── CockpitModeToggle.tsx     # Workspace mode segments (UI; maps to view)
 │       ├── ParcelFilters.tsx         # Left filter panel
 │       ├── ParcelTable.tsx           # Main results table
 │       └── ParcelDetailDrawer.tsx    # Right-side detail + score breakdown

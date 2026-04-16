@@ -56,14 +56,9 @@ create index if not exists parcels_absentee_idx       on public.parcels (is_abse
 -- ----------------------------------------------------------------
 -- Desirability scoring function (0–100)
 -- ----------------------------------------------------------------
--- Weighting philosophy:
---   Absentee ownership ............. up to +25  (out-of-area owners need management)
---   Vacancy signal ................. up to +25  (long-vacant = pain = opportunity)
---   Unit-count sweet spot .......... up to +20  (4–80 units ideal for mid-sized PMs)
---   Market value band .............. up to +15  (avoid trivial AND institutional)
---   Not professionally managed ..... up to +15  (already-managed = wasted outreach)
---   Contact status modifier ........ -100..+0   (DNC zeroes the score)
--- Maximum theoretical raw score = 100. We clamp to [0, 100].
+-- PM weights (max raw 70, scaled to 100): absentee 25, days_vacant up to 20,
+-- units 4–80 +15, market $150k–$5M +10, professionally managed -20.
+-- p_vacancy_status kept for signature compatibility with views (unused in formula).
 create or replace function public.calculate_desirability_score(
   p_is_absentee_owner       boolean,
   p_vacancy_status          text,
@@ -77,82 +72,44 @@ language plpgsql
 immutable
 as $$
 declare
-  score numeric := 0;
+  raw     numeric := 0;
+  abs_pts numeric := 0;
+  dv_pts  numeric := 0;
+  uc_pts  numeric := 0;
+  mv_pts  numeric := 0;
+  pm_pts  numeric := 0;
 begin
-  -- 1. Absentee ownership (up to +25)
-  if p_is_absentee_owner is true then
-    score := score + 25;
-  end if;
-
-  -- 2. Vacancy signal (up to +25)
-  if p_vacancy_status = 'vacant_long' then
-    score := score + 20;
-  elsif p_vacancy_status = 'partially_vacant' then
-    score := score + 12;
-  elsif p_vacancy_status = 'occupied' then
-    score := score + 2;
-  end if;
-
-  if p_days_vacant is not null then
-    if p_days_vacant >= 180 then
-      score := score + 5;
-    elsif p_days_vacant >= 60 then
-      score := score + 3;
-    end if;
-  end if;
-
-  -- 3. Unit count sweet spot (up to +20)
-  if p_unit_count is not null then
-    if p_unit_count between 4 and 80 then
-      score := score + 20;
-    elsif p_unit_count between 2 and 3 then
-      score := score + 8;
-    elsif p_unit_count = 1 then
-      score := score - 5;
-    elsif p_unit_count between 81 and 150 then
-      score := score + 10;
-    elsif p_unit_count > 150 then
-      score := score + 2;
-    end if;
-  end if;
-
-  -- 4. Market value band (up to +15)
-  if p_market_value is not null then
-    if p_market_value between 500000 and 8000000 then
-      score := score + 15;
-    elsif p_market_value between 200000 and 499999 then
-      score := score + 8;
-    elsif p_market_value between 8000001 and 25000000 then
-      score := score + 6;
-    elsif p_market_value < 200000 then
-      score := score - 5;
-    else
-      -- > 25M: institutional, hard to win
-      score := score + 1;
-    end if;
-  end if;
-
-  -- 5. Professionally managed penalty / bonus (up to +15)
-  if p_is_professionally_managed is false then
-    score := score + 15;
-  elsif p_is_professionally_managed is null then
-    score := score + 8;
-  else
-    score := score - 10;
-  end if;
-
-  -- 6. Contact status modifier
   if p_contact_status = 'do_not_contact' then
     return 0;
-  elsif p_contact_status = 'follow_up' then
-    score := score + 3;
   end if;
 
-  -- Clamp 0..100
-  if score < 0 then score := 0; end if;
-  if score > 100 then score := 100; end if;
+  if p_is_absentee_owner is true then
+    abs_pts := 25;
+  end if;
 
-  return round(score, 1);
+  dv_pts := least(
+    20::numeric,
+    (greatest(coalesce(p_days_vacant, 0), 0)::numeric / 365.0) * 20
+  );
+
+  if p_unit_count is not null and p_unit_count between 4 and 80 then
+    uc_pts := 15;
+  end if;
+
+  if p_market_value is not null and p_market_value between 150000 and 5000000 then
+    mv_pts := 10;
+  end if;
+
+  if p_is_professionally_managed is true then
+    pm_pts := -20;
+  end if;
+
+  raw := abs_pts + dv_pts + uc_pts + mv_pts + pm_pts;
+  if raw < 0 then
+    raw := 0;
+  end if;
+
+  return round(least(100::numeric, (raw / 70.0) * 100), 1);
 end;
 $$;
 

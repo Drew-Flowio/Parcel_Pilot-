@@ -2,9 +2,10 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Parcel, ParcelFilters, ViewSlice } from "@/lib/types";
-import { ParcelViewToggle } from "./ParcelViewToggle";
-import { ParcelFiltersPanel } from "./ParcelFilters";
+import type { CockpitMode, Parcel, ParcelFilters } from "@/lib/types";
+import { cockpitModeToViewSlice, viewSliceToCockpitMode } from "@/lib/cockpitMode";
+import { CockpitModeToggle } from "./CockpitModeToggle";
+import { ParcelFiltersForm } from "./ParcelFilters";
 import { ParcelTable } from "./ParcelTable";
 import { ParcelDetailDrawer } from "./ParcelDetailDrawer";
 import { Button } from "@/components/ui/Primitives";
@@ -13,6 +14,22 @@ interface InitialPayload {
   rows: Parcel[];
   total: number;
   filters: ParcelFilters;
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  );
 }
 
 export function Cockpit({ initial }: { initial: InitialPayload }) {
@@ -24,9 +41,14 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<Parcel | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [cockpitMode, setCockpitMode] = useState<CockpitMode>(() =>
+    viewSliceToCockpitMode(initial.filters.view)
+  );
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const skipNextFetch = useRef(true); // we already have initial
+  const skipNextFetch = useRef(true);
 
   const buildQueryString = useCallback((f: ParcelFilters) => {
     const sp = new URLSearchParams();
@@ -44,7 +66,6 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
     return sp.toString();
   }, []);
 
-  // Fetch on filter change (debounced) + sync URL
   useEffect(() => {
     if (skipNextFetch.current) {
       skipNextFetch.current = false;
@@ -70,14 +91,36 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
+  useEffect(() => {
+    if (mobileFiltersOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [mobileFiltersOpen]);
+
+  useEffect(() => {
+    if (active) setMobileFiltersOpen(false);
+  }, [active]);
+
   const updateFilters = (patch: Partial<ParcelFilters>) => {
     setFilters((f) => ({ ...f, ...patch, page: 1 }));
   };
   const resetFilters = () => {
-    setFilters({ view: filters.view, sort: "desirability_score", page: 1, pageSize: 25 });
+    setFilters({
+      view: cockpitModeToViewSlice(cockpitMode),
+      sort: "desirability_score",
+      page: 1,
+      pageSize: 25,
+    });
   };
 
-  const setView = (v: ViewSlice) => setFilters((f) => ({ ...f, view: v, page: 1 }));
+  const onCockpitModeChange = (mode: CockpitMode) => {
+    setCockpitMode(mode);
+    setFilters((f) => ({ ...f, view: cockpitModeToViewSlice(mode), page: 1 }));
+  };
 
   const toggleSelect = (id: string) => {
     setSelected((s) => {
@@ -107,7 +150,7 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
   }, [selected, filters, buildQueryString]);
 
   const topTargetCount = useMemo(
-    () => rows.filter((r) => r.desirability_score >= 70).length,
+    () => rows.filter((r) => r.desirability_score >= 85).length,
     [rows]
   );
 
@@ -120,78 +163,189 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
   const pageSize = filters.pageSize ?? 25;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
+  const tableTotalLabel = `${rows.length.toLocaleString()} on page · ${total.toLocaleString()} total`;
+
   return (
-    <div className="space-y-6">
-      {/* Stats strip */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-            Cockpit
-          </div>
-          <h1 className="font-display text-3xl font-semibold leading-tight text-ink-900">
-            {total.toLocaleString()} parcels{" "}
-            <span className="text-ink-400">·</span>{" "}
-            <span className="text-accent-600">{topTargetCount}</span>{" "}
-            <span className="text-base font-normal text-ink-500">top targets in view</span>
-          </h1>
-        </div>
-        <div className="flex items-center gap-2">
-          {selected.size > 0 ? (
-            <span className="text-xs text-ink-500">{selected.size} selected</span>
-          ) : null}
-          <a href={exportUrl}>
-            <Button variant="primary">
-              ↓ Export {selected.size > 0 ? "selected" : "list"} (CSV)
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1">
+        {/* Desktop: collapsible filter rail */}
+        <aside
+          className={`relative hidden shrink-0 flex-col border-r border-ink-200 bg-white transition-[width] duration-200 ease-out lg:flex ${
+            sidebarCollapsed ? "w-14" : "w-[20rem]"
+          }`}
+        >
+          {sidebarCollapsed ? (
+            <div className="flex flex-col items-center border-b border-ink-100 py-2">
+              <button
+                type="button"
+                title="Expand filters"
+                onClick={() => setSidebarCollapsed(false)}
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-ink-600 transition hover:bg-ink-50 hover:text-ink-900"
+              >
+                <ChevronRightIcon />
+              </button>
+              <span className="mt-1 max-w-[2.5rem] text-center text-[9px] font-semibold uppercase leading-tight tracking-wide text-ink-400">
+                Filter
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
+                <span className="text-sm font-semibold text-ink-900">Filters</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="rounded-md px-2 py-1 text-xs font-medium text-ink-500 hover:bg-ink-50 hover:text-accent-700"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    title="Collapse filters"
+                    onClick={() => setSidebarCollapsed(true)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-500 hover:bg-ink-100"
+                  >
+                    <ChevronLeftIcon />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+                <ParcelFiltersForm
+                  filters={filters}
+                  onChange={updateFilters}
+                  onReset={resetFilters}
+                  showActions={false}
+                />
+              </div>
+            </>
+          )}
+        </aside>
+
+        {/* Center: pipeline */}
+        <main className="flex min-w-0 flex-1 flex-col bg-ink-50/40">
+          {/* Mobile filter trigger */}
+          <div className="flex items-center justify-between gap-3 border-b border-ink-200/80 bg-white/90 px-4 py-3 backdrop-blur-sm lg:hidden">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                Pipeline
+              </div>
+              <div className="text-sm font-semibold text-ink-900">
+                {total.toLocaleString()} records
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="shrink-0"
+              onClick={() => setMobileFiltersOpen(true)}
+            >
+              Filters
             </Button>
-          </a>
-        </div>
+          </div>
+
+          <div className="flex flex-1 flex-col gap-5 p-4 sm:p-6">
+            <CockpitModeToggle value={cockpitMode} onChange={onCockpitModeChange} />
+
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                  Lead gen cockpit
+                </div>
+                <h1 className="font-display text-2xl font-semibold tracking-tight text-ink-900 sm:text-3xl">
+                  {total.toLocaleString()}{" "}
+                  <span className="text-ink-400">·</span>{" "}
+                  <span className="text-accent-600">{topTargetCount}</span>{" "}
+                  <span className="text-lg font-normal text-ink-500 sm:text-xl">
+                    top targets in view
+                  </span>
+                </h1>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {selected.size > 0 ? (
+                  <span className="rounded-full bg-accent-50 px-3 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-200/60">
+                    {selected.size} selected
+                  </span>
+                ) : null}
+                <a href={exportUrl}>
+                  <Button variant="primary">Export CSV</Button>
+                </a>
+              </div>
+            </div>
+
+            <ParcelTable
+              rows={rows}
+              loading={loading}
+              selected={selected}
+              onToggleSelect={toggleSelect}
+              onToggleAll={toggleAll}
+              onRowClick={(p) => setActive(p)}
+              totalLabel={tableTotalLabel}
+            />
+
+            {pageCount > 1 ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3 text-sm shadow-soft">
+                <span className="text-ink-500">
+                  Page <span className="font-medium text-ink-800">{page}</span> of{" "}
+                  <span className="font-medium text-ink-800">{pageCount}</span>
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    disabled={page <= 1}
+                    onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) - 1 }))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={page >= pageCount}
+                    onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) + 1 }))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </main>
       </div>
 
-      <ParcelViewToggle value={filters.view} onChange={setView} />
-
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <ParcelFiltersPanel
-          filters={filters}
-          onChange={updateFilters}
-          onReset={resetFilters}
-        />
-
-        <div className="min-w-0 flex-1 space-y-4">
-          <ParcelTable
-            rows={rows}
-            loading={loading}
-            selected={selected}
-            onToggleSelect={toggleSelect}
-            onToggleAll={toggleAll}
-            onRowClick={(p) => setActive(p)}
-          />
-
-          {/* Pagination */}
-          {pageCount > 1 ? (
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-ink-500">
-                Page {page} of {pageCount}
+      {/* Mobile: full-screen filter drawer */}
+      {mobileFiltersOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Filters">
+          <div className="drawer-enter absolute inset-0 flex flex-col bg-white shadow-pop">
+            <div className="flex items-center justify-between border-b border-ink-100 px-4 py-4">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                  Refine list
+                </div>
+                <div className="text-lg font-semibold text-ink-900">Filters</div>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  disabled={page <= 1}
-                  onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) - 1 }))}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="text-sm font-medium text-ink-500 hover:text-accent-700"
                 >
-                  ← Prev
-                </Button>
-                <Button
-                  variant="secondary"
-                  disabled={page >= pageCount}
-                  onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) + 1 }))}
-                >
-                  Next →
+                  Reset
+                </button>
+                <Button type="button" variant="primary" onClick={() => setMobileFiltersOpen(false)}>
+                  Done
                 </Button>
               </div>
             </div>
-          ) : null}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-8">
+              <ParcelFiltersForm
+                filters={filters}
+                onChange={updateFilters}
+                onReset={resetFilters}
+                showActions={false}
+              />
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <ParcelDetailDrawer
         parcel={active}

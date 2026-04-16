@@ -11,165 +11,120 @@ export interface ScoreBreakdown {
   factors: ScoreFactor[];
 }
 
+const RAW_MAX = 70;
+
+/** Matches SQL `calculate_desirability_score`: raw points sum to ≤70, then ÷70×100, capped at 100. */
+function normalizeRawToScore(raw: number): number {
+  const clampedRaw = Math.max(0, raw);
+  const scaled = (clampedRaw / RAW_MAX) * 100;
+  return Math.round(Math.min(100, scaled) * 10) / 10;
+}
+
 /**
- * Mirrors the SQL `calculate_desirability_score` function exactly.
- * Used for UI breakdowns and any client-side recalculation.
+ * Mirrors Postgres `calculate_desirability_score` for UI breakdowns.
+ * Weights: absentee 25, days_vacant up to 20, units 4–80 +15, MV $150k–$5M +10, professionally managed -20.
  */
 export function computeDesirabilityBreakdown(p: Partial<Parcel>): ScoreBreakdown {
   const factors: ScoreFactor[] = [];
-  let score = 0;
 
-  // 1. Absentee
-  if (p.is_absentee_owner === true) {
-    score += 25;
-    factors.push({
-      label: "Absentee owner",
-      points: 25,
-      detail: "Mailing address differs from property address.",
-    });
-  } else {
-    factors.push({
-      label: "Owner-occupied",
-      points: 0,
-      detail: "Owner lives at the property — less likely to need management.",
-    });
-  }
-
-  // 2. Vacancy
-  let vacancyPts = 0;
-  if (p.vacancy_status === "vacant_long") vacancyPts = 20;
-  else if (p.vacancy_status === "partially_vacant") vacancyPts = 12;
-  else if (p.vacancy_status === "occupied") vacancyPts = 2;
-  if (vacancyPts) {
-    score += vacancyPts;
-    factors.push({
-      label: `Vacancy: ${formatVacancy(p.vacancy_status)}`,
-      points: vacancyPts,
-      detail: "Vacancy = pain = an opening for a property manager.",
-    });
-  }
-
-  if (p.days_vacant != null) {
-    let dvPts = 0;
-    if (p.days_vacant >= 180) dvPts = 5;
-    else if (p.days_vacant >= 60) dvPts = 3;
-    if (dvPts) {
-      score += dvPts;
-      factors.push({
-        label: `${p.days_vacant} days vacant`,
-        points: dvPts,
-        detail: "Long-vacant properties bleed cash — owner is motivated.",
-      });
-    }
-  }
-
-  // 3. Unit count
-  if (p.unit_count != null) {
-    let uPts = 0;
-    let detail = "";
-    if (p.unit_count >= 4 && p.unit_count <= 80) {
-      uPts = 20;
-      detail = "Sweet spot for a mid-sized PM company.";
-    } else if (p.unit_count >= 2 && p.unit_count <= 3) {
-      uPts = 8;
-      detail = "Small multifamily — winnable but lower fee revenue.";
-    } else if (p.unit_count === 1) {
-      uPts = -5;
-      detail = "Single-family — usually not worth a PM contract.";
-    } else if (p.unit_count >= 81 && p.unit_count <= 150) {
-      uPts = 10;
-      detail = "Large building — operationally heavier.";
-    } else if (p.unit_count > 150) {
-      uPts = 2;
-      detail = "Institutional-scale, likely already managed.";
-    }
-    score += uPts;
-    factors.push({
-      label: `${p.unit_count} unit${p.unit_count === 1 ? "" : "s"}`,
-      points: uPts,
-      detail,
-    });
-  }
-
-  // 4. Market value
-  if (p.market_value != null) {
-    let mvPts = 0;
-    let detail = "";
-    if (p.market_value >= 500000 && p.market_value <= 8_000_000) {
-      mvPts = 15;
-      detail = "Ideal value range for sustainable management fees.";
-    } else if (p.market_value >= 200000 && p.market_value < 500000) {
-      mvPts = 8;
-      detail = "Below ideal but workable.";
-    } else if (p.market_value > 8_000_000 && p.market_value <= 25_000_000) {
-      mvPts = 6;
-      detail = "Higher value — strong revenue but more competition.";
-    } else if (p.market_value < 200000) {
-      mvPts = -5;
-      detail = "Probably too small to justify a PM contract.";
-    } else {
-      mvPts = 1;
-      detail = "Institutional-scale; hard to win against incumbent firms.";
-    }
-    score += mvPts;
-    factors.push({
-      label: `Market value ${formatCurrency(p.market_value)}`,
-      points: mvPts,
-      detail,
-    });
-  }
-
-  // 5. Professionally managed
-  if (p.is_professionally_managed === false) {
-    score += 15;
-    factors.push({
-      label: "Not professionally managed",
-      points: 15,
-      detail: "No incumbent to displace — direct opportunity.",
-    });
-  } else if (p.is_professionally_managed == null) {
-    score += 8;
-    factors.push({
-      label: "Management status unknown",
-      points: 8,
-      detail: "Worth investigating before outreach.",
-    });
-  } else {
-    score -= 10;
-    factors.push({
-      label: "Already professionally managed",
-      points: -10,
-      detail: "Incumbent in place — uphill battle.",
-    });
-  }
-
-  // 6. Contact status
   if (p.contact_status === "do_not_contact") {
     factors.push({
       label: "Do not contact",
-      points: -score,
-      detail: "Marked do-not-contact — score reset to zero.",
+      points: 0,
+      detail: "Score forced to 0.",
     });
     return { total: 0, factors };
   }
-  if (p.contact_status === "follow_up") {
-    score += 3;
+
+  let absPts = 0;
+  if (p.is_absentee_owner === true) {
+    absPts = 25;
     factors.push({
-      label: "Follow-up due",
-      points: 3,
-      detail: "Small bump — already in motion.",
+      label: "Absentee owner",
+      points: 25,
+      detail: "Full weight toward PM opportunity.",
+    });
+  } else {
+    factors.push({
+      label: "Absentee owner",
+      points: 0,
+      detail: "Not absentee — no +25.",
     });
   }
 
-  const total = Math.max(0, Math.min(100, Math.round(score * 10) / 10));
+  const days = Math.max(0, p.days_vacant ?? 0);
+  const dvPts = Math.min(20, (days / 365) * 20);
+  factors.push({
+    label: "Days vacant",
+    points: Math.round(dvPts * 10) / 10,
+    detail: `Up to 20 pts; linear to 365 days (${days} days).`,
+  });
+
+  let ucPts = 0;
+  if (p.unit_count != null && p.unit_count >= 4 && p.unit_count <= 80) {
+    ucPts = 15;
+    factors.push({
+      label: "Unit count",
+      points: 15,
+      detail: "4–80 units (sweet spot).",
+    });
+  } else {
+    factors.push({
+      label: "Unit count",
+      points: 0,
+      detail: "Outside 4–80 — no unit bonus.",
+    });
+  }
+
+  let mvPts = 0;
+  if (p.market_value != null && p.market_value >= 150_000 && p.market_value <= 5_000_000) {
+    mvPts = 10;
+    factors.push({
+      label: "Market value",
+      points: 10,
+      detail: "$150k–$5M band.",
+    });
+  } else {
+    factors.push({
+      label: "Market value",
+      points: 0,
+      detail: "Outside $150k–$5M — no MV bonus.",
+    });
+  }
+
+  let pmPts = 0;
+  if (p.is_professionally_managed === true) {
+    pmPts = -20;
+    factors.push({
+      label: "Professionally managed",
+      points: -20,
+      detail: "Incumbent PM — penalty.",
+    });
+  } else {
+    factors.push({
+      label: "Professionally managed",
+      points: 0,
+      detail: "Not flagged as professionally managed.",
+    });
+  }
+
+  const raw = absPts + dvPts + ucPts + mvPts + pmPts;
+  const total = normalizeRawToScore(raw);
+
   return { total, factors };
 }
 
+/** Table / badge styling: 🟢 85+, 🟡 60–84, 🔴 &lt;60 */
 export function scoreColor(score: number): string {
-  if (score >= 75) return "bg-emerald-100 text-emerald-800 border-emerald-200";
-  if (score >= 55) return "bg-accent-100 text-accent-800 border-accent-200";
-  if (score >= 35) return "bg-amber-100 text-amber-800 border-amber-200";
-  return "bg-ink-100 text-ink-600 border-ink-200";
+  if (score >= 85) return "bg-emerald-100 text-emerald-900 border-emerald-300";
+  if (score >= 60) return "bg-amber-100 text-amber-900 border-amber-300";
+  return "bg-red-100 text-red-900 border-red-300";
+}
+
+export function desirabilityTierEmoji(score: number): "🟢" | "🟡" | "🔴" {
+  if (score >= 85) return "🟢";
+  if (score >= 60) return "🟡";
+  return "🔴";
 }
 
 export function formatCurrency(n: number | null | undefined): string {
