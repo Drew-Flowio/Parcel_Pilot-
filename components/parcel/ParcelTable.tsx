@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import type { Parcel } from "@/lib/types";
 import {
   desirabilityTierEmoji,
@@ -10,7 +10,10 @@ import {
   parseDesirabilityScore,
   scoreColor,
 } from "@/lib/desirability";
-import { Badge } from "@/components/ui/Primitives";
+import { Badge, Button } from "@/components/ui/Primitives";
+import { LLCSkipTraceModal } from "./LLCSkipTraceModal";
+import { classifyOwnerType, ownerTypeBadgeClass } from "@/lib/ownerType";
+import { hasNeedsSkipTraceNote } from "@/lib/skipTrace";
 
 export function ParcelTable({
   rows,
@@ -19,6 +22,7 @@ export function ParcelTable({
   onToggleSelect,
   onToggleAll,
   onRowClick,
+  onParcelUpdated,
   totalLabel,
 }: {
   rows: Parcel[];
@@ -27,12 +31,26 @@ export function ParcelTable({
   onToggleSelect: (id: string) => void;
   onToggleAll: (ids: string[]) => void;
   onRowClick: (p: Parcel) => void;
+  /** Called after skip-trace note is saved (e.g. refresh row in parent). */
+  onParcelUpdated?: (p: Parcel) => void;
   totalLabel?: string;
 }) {
+  const [skipModalParcel, setSkipModalParcel] = useState<Parcel | null>(null);
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+
+  const skipTraceModal = (
+    <LLCSkipTraceModal
+      parcel={skipModalParcel}
+      open={skipModalParcel != null}
+      onClose={() => setSkipModalParcel(null)}
+      onMarked={(updated) => onParcelUpdated?.(updated)}
+    />
+  );
 
   if (loading) {
     return (
+      <>
+        {skipTraceModal}
       <div className="rounded-xl border border-ink-200 bg-white shadow-soft">
         <div className="border-b border-ink-100 px-4 py-3">
           <div className="h-4 w-32 animate-pulse rounded bg-ink-100" />
@@ -43,11 +61,14 @@ export function ParcelTable({
           ))}
         </div>
       </div>
+      </>
     );
   }
 
   if (!rows.length) {
     return (
+      <>
+        {skipTraceModal}
       <div className="rounded-xl border border-dashed border-ink-200 bg-white px-8 py-16 text-center shadow-soft">
         <div className="font-display text-lg font-semibold text-ink-800">
           No records match
@@ -56,10 +77,13 @@ export function ParcelTable({
           Adjust filters or widen your criteria to see more parcels.
         </p>
       </div>
+      </>
     );
   }
 
   return (
+    <>
+    {skipTraceModal}
     <div className="overflow-hidden rounded-xl border border-ink-200 bg-white shadow-soft">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 bg-gradient-to-r from-ink-50/90 to-white px-4 py-3">
         <div className="flex items-baseline gap-2">
@@ -86,6 +110,7 @@ export function ParcelTable({
                 />
               </th>
               <th className="px-3 py-3">Owner / Property</th>
+              <th className="px-3 py-3 whitespace-nowrap">Owner Type</th>
               <th className="hidden sm:table-cell px-3 py-3">Mailing</th>
               <th className="px-3 py-3 text-right">Value</th>
               <th className="hidden md:table-cell px-3 py-3 text-right">Units</th>
@@ -98,6 +123,7 @@ export function ParcelTable({
             {rows.map((p) => {
               const s = parseDesirabilityScore(p.desirability_score);
               const emoji = s != null ? desirabilityTierEmoji(s) : null;
+              const ownerType = classifyOwnerType(p.owner_name);
               return (
                 <tr
                   key={p.id}
@@ -123,6 +149,39 @@ export function ParcelTable({
                       <span className="font-mono tabular-nums text-ink-700">
                         {p.unit_count ?? "—"}
                       </span>
+                    </div>
+                  </td>
+                  <td
+                    className="px-3 py-3 align-top"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex flex-col items-start gap-2">
+                      <Badge
+                        className={`inline-flex items-center border text-xs font-semibold ${ownerTypeBadgeClass(
+                          ownerType.kind
+                        )}`}
+                      >
+                        <span className="select-none" aria-hidden>
+                          {ownerType.emoji}
+                        </span>
+                        <span className="ml-1">{ownerType.label}</span>
+                      </Badge>
+                      {ownerType.kind === "llc" ? (
+                        hasNeedsSkipTraceNote(p.contact_notes) ? (
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-accent-700">
+                            Skip trace noted
+                          </span>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="text-[11px] font-semibold py-1 px-2"
+                            onClick={() => setSkipModalParcel(p)}
+                          >
+                            Skip trace
+                          </Button>
+                        )
+                      ) : null}
                     </div>
                   </td>
                   <td className="hidden max-w-[200px] truncate px-3 py-3 text-ink-600 sm:table-cell">
@@ -174,5 +233,6 @@ export function ParcelTable({
         </table>
       </div>
     </div>
+    </>
   );
 }

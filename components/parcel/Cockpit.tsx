@@ -307,6 +307,9 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
                 onToggleSelect={toggleSelect}
                 onToggleAll={toggleAll}
                 onRowClick={(p) => setActive(p)}
+                onParcelUpdated={(p) =>
+                  setRows((rs) => rs.map((r) => (r.id === p.id ? p : r)))
+                }
                 totalLabel={tableTotalLabel}
               />
             </div>
