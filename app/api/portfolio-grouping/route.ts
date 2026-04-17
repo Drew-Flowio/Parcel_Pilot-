@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
   const offset = Math.max(0, Number(sp.get("offset") ?? 0));
   const q = sp.get("q")?.trim();
 
+  const format = sp.get("format");
+
   const supabase = getSupabaseServer();
 
   let query = supabase
@@ -50,16 +52,75 @@ export async function GET(req: NextRequest) {
         : "total_market_value";
   query = query.order(orderCol, { ascending: false, nullsFirst: false });
 
-  query = query.range(offset, offset + limit - 1);
+  const effectiveLimit = format === "csv" ? Math.min(10_000, Math.max(limit, 2_000)) : limit;
+  query = query.range(offset, offset + effectiveLimit - 1);
 
   const { data, error, count } = await query;
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  const rows = (data ?? []) as PortfolioGroupRow[];
+
+  if (format === "csv") {
+    const header = [
+      "owner_name_display",
+      "owner_type",
+      "parcel_count",
+      "total_units",
+      "total_market_value",
+      "avg_market_value",
+      "absentee_count",
+      "vacant_long_count",
+      "most_recent_sale_date",
+      "primary_mailing_address",
+      "primary_city",
+      "primary_state",
+      "primary_zip",
+      "owner_key",
+    ];
+    const lines = [header.join(",")];
+    for (const r of rows) {
+      lines.push(
+        [
+          csvEscape(r.owner_name_display),
+          r.owner_type,
+          r.parcel_count,
+          r.total_units,
+          r.total_market_value,
+          Math.round(Number(r.avg_market_value) || 0),
+          r.absentee_count,
+          r.vacant_long_count,
+          r.most_recent_sale_date ?? "",
+          csvEscape(r.primary_mailing_address ?? ""),
+          csvEscape(r.primary_city ?? ""),
+          r.primary_state ?? "",
+          r.primary_zip ?? "",
+          csvEscape(r.owner_key),
+        ].join(",")
+      );
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    return new NextResponse(lines.join("\n") + "\n", {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="portfolios-${stamp}.csv"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   return NextResponse.json({
-    rows: (data ?? []) as PortfolioGroupRow[],
+    rows,
     total: count ?? 0,
     limit,
     offset,
   });
+}
+
+function csvEscape(v: string | null | undefined): string {
+  if (v == null) return "";
+  const s = String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }

@@ -5,10 +5,19 @@ import { appendNeedsSkipTraceNote, hasNeedsSkipTraceNote } from "@/lib/skipTrace
 
 export const dynamic = "force-dynamic";
 
-type BulkAction = "mark_contacted" | "skip_trace_llc";
+type BulkAction = "mark_contacted" | "skip_trace_llc" | "mark_vacant";
+
+type BulkBody = {
+  action?: BulkAction;
+  ids?: string[];
+  /** For `mark_vacant`: vacancy_status to set (default `vacant_long`). */
+  vacancy_status?: "occupied" | "partially_vacant" | "vacant_long" | "unknown";
+  /** For `mark_vacant`: optional days_vacant override (explicit number or null to clear). */
+  days_vacant?: number | null;
+};
 
 export async function POST(req: NextRequest) {
-  let body: { action?: BulkAction; ids?: string[] };
+  let body: BulkBody;
   try {
     body = await req.json();
   } catch {
@@ -63,6 +72,25 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true, updated });
+  }
+
+  if (action === "mark_vacant") {
+    const vacancy_status = body.vacancy_status ?? "vacant_long";
+    if (
+      !["occupied", "partially_vacant", "vacant_long", "unknown"].includes(
+        vacancy_status
+      )
+    ) {
+      return NextResponse.json({ error: "Invalid vacancy_status" }, { status: 400 });
+    }
+    const update: Record<string, unknown> = { vacancy_status };
+    if (body.days_vacant !== undefined) update.days_vacant = body.days_vacant;
+
+    const { error } = await supabase.from("parcels").update(update).in("id", ids);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, updated: ids.length });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

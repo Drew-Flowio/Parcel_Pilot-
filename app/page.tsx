@@ -4,8 +4,10 @@ import { getSupabaseServer } from "@/lib/supabaseClient";
 import {
   fetchAllSegments,
   fetchIntelligenceSummary,
+  fetchTopAgents,
   fetchTopPortfolios,
 } from "@/lib/intelligence";
+import { AgentIntelligence } from "@/components/intel/AgentIntelligence";
 import { IntelligenceSummary } from "@/components/intel/IntelligenceSummary";
 import { OwnerLeaderboard } from "@/components/intel/OwnerLeaderboard";
 import { SegmentCard } from "@/components/intel/SegmentCard";
@@ -34,18 +36,21 @@ export default async function IntelligenceDashboardPage() {
   let topPortfolios: Awaited<ReturnType<typeof fetchTopPortfolios>> = [];
   let segments: Awaited<ReturnType<typeof fetchAllSegments>> = [];
   let hotPortfolios: Awaited<ReturnType<typeof fetchTopPortfolios>> = [];
+  let topAgents: Awaited<ReturnType<typeof fetchTopAgents>> = [];
 
   try {
-    const [s, tp, seg, hp] = await Promise.all([
+    const [s, tp, seg, hp, ta] = await Promise.all([
       fetchIntelligenceSummary(supabase),
       fetchTopPortfolios(supabase, { limit: 10, minParcels: 2, orderBy: "total_market_value" }),
       fetchAllSegments(supabase),
       fetchTopPortfolios(supabase, { limit: 6, minParcels: 3, orderBy: "total_market_value" }),
+      fetchTopAgents(supabase, { limit: 8 }),
     ]);
     summary = s;
     topPortfolios = tp;
     segments = seg;
     hotPortfolios = hp;
+    topAgents = ta;
   } catch (e) {
     errorMsg = e instanceof Error ? e.message : "Unknown error";
   }
@@ -138,12 +143,21 @@ export default async function IntelligenceDashboardPage() {
                 one-click drill into the cockpit portfolio view.
               </p>
             </div>
-            <Link
-              href="/cockpit?portfolio=1"
-              className="text-xs font-medium text-accent-700 hover:text-accent-800"
-            >
-              See all portfolios →
-            </Link>
+            <div className="flex items-center gap-3">
+              <a
+                href="/api/portfolio-grouping?format=csv&minParcels=3&limit=2000"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:border-ink-300 hover:bg-ink-50"
+                download
+              >
+                Export CSV
+              </a>
+              <Link
+                href="/cockpit?portfolio=1"
+                className="text-xs font-medium text-accent-700 hover:text-accent-800"
+              >
+                See all portfolios →
+              </Link>
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {hotPortfolios.map((g) => (
@@ -152,8 +166,9 @@ export default async function IntelligenceDashboardPage() {
           </div>
         </section>
 
-        <section>
+        <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <OwnerLeaderboard rows={topPortfolios} />
+          <AgentIntelligence rows={topAgents} />
         </section>
       </main>
     </div>

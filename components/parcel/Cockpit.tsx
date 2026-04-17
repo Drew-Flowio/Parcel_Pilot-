@@ -325,6 +325,35 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
     }
   };
 
+  const bulkMarkVacant = async () => {
+    if (selected.size === 0) return;
+    const n = selected.size;
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/parcels/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "mark_vacant",
+          ids: Array.from(selected),
+          vacancy_status: "vacant_long",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error((json as { error?: string }).error ?? "Bulk update failed");
+        return;
+      }
+      await refetchRows();
+      setSelected(new Set());
+      toast.success(
+        `Flagged ${n.toLocaleString()} parcel${n === 1 ? "" : "s"} as vacant 90+`
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const bulkSkipTrace = async () => {
     if (selected.size === 0) return;
     setBulkBusy(true);
@@ -648,6 +677,15 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
                   onClick={bulkMarkContacted}
                 >
                   Mark Contacted
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={bulkBusy || selected.size === 0}
+                  onClick={bulkMarkVacant}
+                  title="Flag selected parcels as vacant 90+ days"
+                >
+                  Mark Vacant
                 </Button>
                 {selected.size > 0 ? (
                   <span className="text-xs text-ink-500">

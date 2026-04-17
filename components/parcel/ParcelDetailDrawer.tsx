@@ -2,7 +2,13 @@
 
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { ContactStatus, Parcel, ScoringMode } from "@/lib/types";
+import type {
+  ContactStatus,
+  Parcel,
+  ScoringMode,
+  SosIntelRow,
+  VacancyStatus,
+} from "@/lib/types";
 import type { ScoringWeightsBundle } from "@/lib/scoringWeights";
 import { weightsForMode } from "@/lib/scoringWeights";
 import {
@@ -10,11 +16,13 @@ import {
   formatContactStatus,
   formatCurrency,
   formatScoreSummaryLine,
-  formatVacancy,
   parseDesirabilityScore,
   scoreColor,
 } from "@/lib/desirability";
 import { Badge, Button, Input, Label, Select } from "@/components/ui/Primitives";
+import { classifyOwnerType } from "@/lib/ownerType";
+import { ownerKeyFromName } from "@/lib/intelligence";
+import { minnesotaSecretaryOfStateSearchUrl } from "@/lib/skipTrace";
 
 const notesClass =
   "min-h-[88px] w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-200";
@@ -162,8 +170,6 @@ export function ParcelDetailDrawer({
           <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
             <Fact label="Market value" value={formatCurrency(draft.market_value)} />
             <Fact label="Units" value={draft.unit_count?.toString() ?? "—"} />
-            <Fact label="Vacancy" value={formatVacancy(draft.vacancy_status)} />
-            <Fact label="Days vacant" value={draft.days_vacant?.toString() ?? "—"} />
             <Fact label="Absentee" value={draft.is_absentee_owner ? "Yes" : "No"} />
             <Fact
               label="Pro managed"
@@ -175,7 +181,31 @@ export function ParcelDetailDrawer({
                     : "Unknown"
               }
             />
+            <Fact
+              label="Built"
+              value={draft.year_built ? String(draft.year_built) : "—"}
+            />
+            <Fact
+              label="Last sale"
+              value={
+                draft.last_sale_date
+                  ? new Date(draft.last_sale_date).toLocaleDateString()
+                  : "—"
+              }
+            />
           </div>
+
+          <VacancyEditor
+            status={draft.vacancy_status}
+            days={draft.days_vacant}
+            notedAt={draft.vacancy_noted_at}
+            onStatusChange={(status) => {
+              setDraft({ ...draft, vacancy_status: status });
+              patch({ vacancy_status: status });
+            }}
+            onDaysChange={(days) => setDraft({ ...draft, days_vacant: days })}
+            onDaysCommit={(days) => patch({ days_vacant: days })}
+          />
 
           <div className="mt-6">
             <h4 className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
@@ -302,6 +332,15 @@ export function ParcelDetailDrawer({
           </div>
         </section>
 
+        {classifyOwnerType(draft.owner_name).kind === "llc" ? (
+          <EntityResolution
+            ownerName={draft.owner_name}
+            initialAgentName={draft.sos_agent_name}
+            initialAgentAddress={draft.sos_agent_address}
+            initialStatus={draft.sos_lookup_status}
+          />
+        ) : null}
+
         {/* Bottom — Contact history + actions */}
         <section className="flex flex-1 flex-col px-6 py-6">
           <h3 className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
@@ -415,5 +454,211 @@ function Fact({ label, value }: { label: string; value: string }) {
       </div>
       <div className="mt-0.5 text-sm text-ink-800">{value}</div>
     </div>
+  );
+}
+
+function VacancyEditor({
+  status,
+  days,
+  notedAt,
+  onStatusChange,
+  onDaysChange,
+  onDaysCommit,
+}: {
+  status: VacancyStatus;
+  days: number | null;
+  notedAt?: string | null;
+  onStatusChange: (s: VacancyStatus) => void;
+  onDaysChange: (n: number | null) => void;
+  onDaysCommit: (n: number | null) => void;
+}) {
+  return (
+    <div className="mt-5 rounded-lg border border-ink-100 bg-ink-50/60 p-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex-1 min-w-[140px]">
+          <Label>Vacancy status</Label>
+          <Select
+            value={status ?? "unknown"}
+            onChange={(e) => onStatusChange(e.target.value as VacancyStatus)}
+          >
+            <option value="unknown">Unknown</option>
+            <option value="occupied">Occupied</option>
+            <option value="partially_vacant">Partially vacant</option>
+            <option value="vacant_long">Vacant 90+ days</option>
+          </Select>
+        </div>
+        <div className="w-28">
+          <Label>Days vacant</Label>
+          <Input
+            type="number"
+            min={0}
+            max={3650}
+            inputMode="numeric"
+            value={days ?? ""}
+            onChange={(e) => {
+              const raw = e.target.value;
+              onDaysChange(raw === "" ? null : Math.max(0, Number(raw) || 0));
+            }}
+            onBlur={(e) => {
+              const raw = e.target.value;
+              onDaysCommit(raw === "" ? null : Math.max(0, Number(raw) || 0));
+            }}
+            placeholder="—"
+          />
+        </div>
+      </div>
+      <p className="mt-2 text-[11px] leading-snug text-ink-500">
+        {notedAt ? (
+          <>
+            Updated {new Date(notedAt).toLocaleDateString()} — overrides the county
+            record and drives PM propensity in the v2 score.
+          </>
+        ) : (
+          <>
+            Mark vacancy signals you spot in the field (utility shutoffs, mail
+            returns, drive-bys). Your overrides beat the county record.
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+function EntityResolution({
+  ownerName,
+  initialAgentName,
+  initialAgentAddress,
+  initialStatus,
+}: {
+  ownerName: string;
+  initialAgentName: string | null | undefined;
+  initialAgentAddress: string | null | undefined;
+  initialStatus: Parcel["sos_lookup_status"];
+}) {
+  const ownerKey = ownerKeyFromName(ownerName);
+  const [agentName, setAgentName] = useState(initialAgentName ?? "");
+  const [agentAddress, setAgentAddress] = useState(initialAgentAddress ?? "");
+  const [status, setStatus] = useState<Parcel["sos_lookup_status"]>(initialStatus ?? null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setAgentName(initialAgentName ?? "");
+    setAgentAddress(initialAgentAddress ?? "");
+    setStatus(initialStatus ?? null);
+  }, [initialAgentName, initialAgentAddress, initialStatus, ownerKey]);
+
+  const save = async (extra: Partial<SosIntelRow> = {}) => {
+    if (!ownerKey) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/sos-intel/${encodeURIComponent(ownerKey)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          registered_agent_name: agentName.trim() || null,
+          registered_agent_address: agentAddress.trim() || null,
+          ...extra,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error((json as { error?: string }).error ?? "Could not save agent");
+        return;
+      }
+      const row = json.row as SosIntelRow | null;
+      if (row) {
+        setStatus(row.lookup_status);
+        toast.success("Entity resolved — +5 contactability");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const searchUrl = minnesotaSecretaryOfStateSearchUrl(ownerName);
+  const resolved = status === "found" || status === "manual";
+
+  return (
+    <section className="border-b border-ink-100 px-6 py-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+            Entity resolution
+          </h3>
+          <div className="mt-0.5 text-xs text-ink-500">
+            {resolved ? (
+              <>
+                Registered agent captured — contactability boost active.
+              </>
+            ) : (
+              <>Paste agent details from MN SOS to unlock +5 contactability.</>
+            )}
+          </div>
+        </div>
+        <span
+          className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+            resolved
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : status === "pending"
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-ink-200 bg-ink-50 text-ink-500"
+          }`}
+        >
+          {resolved ? "Resolved" : status ?? "Unresolved"}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-3">
+        <div>
+          <Label>Registered agent</Label>
+          <Input
+            value={agentName}
+            onChange={(e) => setAgentName(e.target.value)}
+            placeholder="e.g. John Doe"
+          />
+        </div>
+        <div>
+          <Label>Agent address</Label>
+          <Input
+            value={agentAddress}
+            onChange={(e) => setAgentAddress(e.target.value)}
+            placeholder="Street, city, state, ZIP"
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <a
+          href={searchUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:border-ink-300 hover:bg-ink-50"
+        >
+          Search MN SOS ↗
+        </a>
+        <Button
+          variant="primary"
+          className="py-1.5 text-xs"
+          disabled={saving || !ownerKey || (!agentName.trim() && !agentAddress.trim())}
+          onClick={() => save()}
+        >
+          {saving ? "Saving…" : "Save agent"}
+        </Button>
+        {resolved ? (
+          <Button
+            variant="ghost"
+            className="py-1.5 text-xs"
+            disabled={saving}
+            onClick={() => save({ lookup_status: "not_found" })}
+          >
+            Mark not found
+          </Button>
+        ) : null}
+      </div>
+      <p className="mt-2 text-[11px] leading-snug text-ink-400">
+        Agents are cross-referenced across every entity you resolve — visible on
+        the Intelligence dashboard.
+      </p>
+    </section>
   );
 }

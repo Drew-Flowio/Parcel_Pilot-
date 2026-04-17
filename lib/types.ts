@@ -51,6 +51,8 @@ export interface Parcel {
   sos_agent_name?: string | null;
   sos_agent_address?: string | null;
   sos_lookup_status?: SosLookupStatus | null;
+  /** Set by the INSTEAD OF trigger whenever vacancy fields are edited. */
+  vacancy_noted_at?: string | null;
 }
 
 export type OwnerType = "individual" | "entity" | "institutional" | "other";
@@ -86,6 +88,17 @@ export interface LeadSegment {
   is_builtin: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface SosAgentPortfolio {
+  agent_key: string;
+  registered_agent_name: string;
+  registered_agent_address: string | null;
+  entity_count: number;
+  parcel_count: number;
+  total_market_value: number;
+  total_units: number;
+  owner_keys: string[];
 }
 
 export interface SosIntelRow {

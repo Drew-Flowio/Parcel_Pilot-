@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { LeadSegment, Parcel, PortfolioGroupRow } from "./types";
+import type {
+  LeadSegment,
+  Parcel,
+  PortfolioGroupRow,
+  SosAgentPortfolio,
+} from "./types";
 
 /** Normalize owner name the same way `portfolio_groups.owner_key` does in SQL. */
 export function ownerKeyFromName(raw: string | null | undefined): string {
@@ -210,6 +215,19 @@ export async function fetchIntelligenceSummary(
     sosResolved,
     sosPending,
   };
+}
+
+export async function fetchTopAgents(
+  client: SupabaseClient,
+  { limit = 8 }: { limit?: number } = {}
+): Promise<SosAgentPortfolio[]> {
+  const { data, error } = await client
+    .from("sos_agent_portfolios")
+    .select("*")
+    .order("parcel_count", { ascending: false, nullsFirst: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as SosAgentPortfolio[];
 }
 
 /** Pretty label for owner_type; used across cards and leaderboards. */
