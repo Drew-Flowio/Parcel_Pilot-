@@ -17,3 +17,14 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# typescript (incremental build cache)
+*.tsbuildinfo
+
+# supabase cli
+supabase/.temp/
+
+# ephemeral local payloads / one-off migration helpers
+.tmp_*
+.revert_mcp_payload.json
+.mcp_apply_args.json
