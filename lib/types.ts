@@ -39,6 +39,75 @@ export interface Parcel {
   desirability_score: number;
   created_at: string;
   updated_at: string;
+  /** Intelligence layer (present when fetched from `parcels_intel`). */
+  score_v2?: number | null;
+  owner_key?: string | null;
+  owner_type?: OwnerType | null;
+  owner_portfolio_size?: number | null;
+  owner_portfolio_value?: number | null;
+  owner_avg_market_value?: number | null;
+  owner_vacant_count?: number | null;
+  owner_absentee_count?: number | null;
+  sos_agent_name?: string | null;
+  sos_agent_address?: string | null;
+  sos_lookup_status?: SosLookupStatus | null;
+}
+
+export type OwnerType = "individual" | "entity" | "institutional" | "other";
+
+export type SosLookupStatus = "pending" | "found" | "not_found" | "error" | "manual";
+
+export interface PortfolioGroupRow {
+  owner_key: string;
+  owner_name_display: string;
+  parcel_count: number;
+  total_market_value: number;
+  avg_market_value: number;
+  total_units: number;
+  avg_units: number;
+  absentee_count: number;
+  vacant_long_count: number;
+  most_recent_sale_date: string | null;
+  primary_mailing_address: string | null;
+  primary_city: string | null;
+  primary_state: string | null;
+  primary_zip: string | null;
+  owner_type: OwnerType;
+}
+
+export interface LeadSegment {
+  id: string;
+  slug: string;
+  label: string;
+  description: string | null;
+  icon: string | null;
+  sort_order: number;
+  criteria: Record<string, unknown>;
+  is_builtin: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SosIntelRow {
+  id: string;
+  owner_key: string;
+  business_name: string | null;
+  filing_type: string | null;
+  status: string | null;
+  file_number: string | null;
+  registered_agent_name: string | null;
+  registered_agent_address: string | null;
+  principal_office_address: string | null;
+  organizer_name: string | null;
+  formation_date: string | null;
+  last_renewal_date: string | null;
+  jurisdiction: string | null;
+  source_url: string | null;
+  lookup_status: SosLookupStatus;
+  lookup_error: string | null;
+  fetched_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type ViewSlice = "top" | "high_value" | "honorable_mentions";
@@ -65,6 +134,8 @@ export type CockpitMode =
 
 export interface ParcelFilters {
   view: ViewSlice;
+  /** URL `q` — matches owner, addresses, management company, notes (case-insensitive). */
+  search?: string;
   minValue?: number;
   maxValue?: number;
   minUnits?: number;

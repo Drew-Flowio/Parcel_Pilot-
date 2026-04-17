@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolvePageSize } from "./pagination";
+import { buildParcelSearchOrClause, normalizeParcelSearch } from "./parcelSearch";
 import { PARCEL_SORT_KEYS } from "./parcelSortOptions";
 import type {
   ContactStatus,
@@ -77,6 +78,7 @@ export function parseFilters(
     ).includes(view)
       ? view
       : "top",
+    search: normalizeParcelSearch(get("q")),
     portfolio: get("portfolio") === "1",
     groupBy,
     scoringMode,
@@ -153,6 +155,13 @@ export function applyFilters(
   }
   if (filters.contactStatus && filters.contactStatus.length) {
     q = q.in("contact_status", filters.contactStatus);
+  }
+
+  const searchOr = filters.search
+    ? buildParcelSearchOrClause(filters.search)
+    : null;
+  if (searchOr) {
+    q = q.or(searchOr);
   }
 
   // Sort

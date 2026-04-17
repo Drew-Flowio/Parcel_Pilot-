@@ -11,6 +11,7 @@ import { ParcelFiltersForm } from "./ParcelFilters";
 import { ParcelTable } from "./ParcelTable";
 import { PortfolioTree } from "./PortfolioTree";
 import { ParcelDetailDrawer } from "./ParcelDetailDrawer";
+import { ParcelSearchBar } from "./ParcelSearchBar";
 import { Button, Label, Select } from "@/components/ui/Primitives";
 import { PARCEL_SORT_OPTIONS } from "@/lib/parcelSortOptions";
 import { getDisplayScore } from "@/lib/desirability";
@@ -19,6 +20,7 @@ import {
   FILTER_DEBOUNCE_MS,
   PAGE_SIZE_OPTIONS,
 } from "@/lib/pagination";
+import { normalizeParcelSearch } from "@/lib/parcelSearch";
 
 interface InitialPayload {
   rows: Parcel[];
@@ -95,6 +97,8 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
     if (f.portfolio) sp.set("portfolio", "1");
     if (f.groupBy === "mailing") sp.set("groupBy", "mailing");
     if (f.scoringMode === "flipper") sp.set("scoringMode", "flipper");
+    const q = normalizeParcelSearch(f.search);
+    if (q) sp.set("q", q);
     const ps = f.pageSize ?? DEFAULT_PAGE_SIZE;
     if (ps !== DEFAULT_PAGE_SIZE) sp.set("pageSize", String(ps));
     return sp.toString();
@@ -205,6 +209,7 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
       portfolio: cockpitMode === "portfolio_view",
       groupBy: "owner",
       scoringMode: cockpitMode === "flipper_mode" ? "flipper" : "pm",
+      search: undefined,
     });
   };
 
@@ -487,6 +492,17 @@ export function Cockpit({ initial }: { initial: InitialPayload }) {
           </div>
 
           <div className="flex flex-1 flex-col gap-5 p-4 sm:p-6">
+            <div className="rounded-xl border border-ink-200 bg-white px-4 py-4 shadow-soft">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                Search
+              </div>
+              <ParcelSearchBar
+                value={filters.search ?? ""}
+                onChange={(v) => updateFilters({ search: v.trim() ? v : undefined, page: 1 })}
+                disabled={loading}
+              />
+            </div>
+
             <CockpitModeToggle value={cockpitMode} onChange={onCockpitModeChange} />
 
             {cockpitMode === "portfolio_view" ? (
