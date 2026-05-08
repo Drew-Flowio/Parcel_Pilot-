@@ -84,3 +84,9 @@ body::before {
   height: 0;
   background: transparent;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ping {
+    animation: none !important;
+  }
+}

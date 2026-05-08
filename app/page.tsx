@@ -100,23 +100,11 @@ export default async function IntelligenceDashboardPage() {
           </div>
         ) : null}
 
-        <section>
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-                Hennepin County · Property Management Lead Intelligence
-              </div>
-              <h1 className="font-display text-2xl font-semibold tracking-tight text-ink-900 sm:text-3xl">
-                The Gold Map
-              </h1>
-              <p className="mt-1 max-w-2xl text-sm text-ink-500">
-                Live intelligence across {summary.totalParcels.toLocaleString()} PM-target parcels.
-                Skip tracers are pickaxes — we show exactly where to dig.
-              </p>
-            </div>
-          </div>
-          <IntelligenceSummary {...summary} />
-        </section>
+        {!errorMsg ? (
+          <section>
+            <IntelligenceSummary {...summary} segmentCount={segments.length} />
+          </section>
+        ) : null}
 
         <section>
           <div className="mb-3 flex items-end justify-between">
