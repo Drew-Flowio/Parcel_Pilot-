@@ -62,25 +62,25 @@ export default async function IntelligenceDashboardPage() {
 
   return (
     <div className="relative z-10 flex min-h-screen flex-col">
-      <header className="sticky top-0 z-20 border-b border-ink-200/90 bg-white/95 shadow-sm backdrop-blur-md">
+      <header className="sticky top-0 z-30 border-b border-white/40 bg-white/60 shadow-[0_8px_32px_-12px_rgba(17,21,31,0.18)] backdrop-blur-xl backdrop-saturate-150">
         <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <ParcelPilotLogo />
           <nav className="flex flex-wrap items-center gap-2 text-sm">
             <Link
               href="/"
-              className="rounded-lg bg-ink-900 px-3 py-1.5 font-medium text-white shadow-soft"
+              className="rounded-xl bg-ink-900 px-3.5 py-2 font-medium text-white shadow-lift-sm ring-1 ring-ink-900/20 transition duration-200 hover:-translate-y-0.5 hover:bg-ink-800 hover:shadow-md"
             >
               Intelligence
             </Link>
             <Link
               href="/cockpit"
-              className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 font-medium text-ink-700 hover:border-ink-300 hover:bg-ink-50"
+              className="rounded-xl border border-white/70 bg-white/85 px-3.5 py-2 font-medium text-ink-700 shadow-md shadow-ink-900/5 ring-1 ring-ink-900/[0.03] transition duration-200 hover:-translate-y-0.5 hover:border-accent-200/60 hover:bg-white hover:shadow-lift-sm"
             >
               Cockpit
             </Link>
             <Link
               href="/settings"
-              className="rounded-lg border border-ink-200 bg-white px-3 py-1.5 font-medium text-ink-700 hover:border-ink-300 hover:bg-ink-50"
+              className="rounded-xl border border-white/70 bg-white/85 px-3.5 py-2 font-medium text-ink-700 shadow-md shadow-ink-900/5 ring-1 ring-ink-900/[0.03] transition duration-200 hover:-translate-y-0.5 hover:border-accent-200/60 hover:bg-white hover:shadow-lift-sm"
             >
               Settings
             </Link>

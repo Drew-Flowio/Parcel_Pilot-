@@ -42,6 +42,20 @@ const config: Config = {
       boxShadow: {
         soft: "0 1px 2px rgba(17,21,31,0.06), 0 4px 16px rgba(17,21,31,0.04)",
         pop: "0 8px 28px rgba(17,21,31,0.12)",
+        lift:
+          "0 22px 50px -12px rgba(17,21,31,0.18), 0 10px 24px -10px rgba(17,21,31,0.1), inset 0 1px 0 rgba(255,255,255,0.65)",
+        "lift-sm":
+          "0 14px 32px -8px rgba(17,21,31,0.14), 0 6px 14px -6px rgba(17,21,31,0.08), inset 0 1px 0 rgba(255,255,255,0.55)",
+      },
+      keyframes: {
+        "flowio-float-slow": {
+          "0%, 100%": { transform: "translate(0, 0) scale(1)" },
+          "33%": { transform: "translate(8px, -12px) scale(1.03)" },
+          "66%": { transform: "translate(-10px, 6px) scale(0.98)" },
+        },
+      },
+      animation: {
+        "flowio-float-slow": "flowio-float-slow 18s ease-in-out infinite",
       },
     },
   },

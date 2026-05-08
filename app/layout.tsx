@@ -3,9 +3,9 @@ import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Parcel Pilot — Targeted property leads for PM companies",
+  title: "Flowio — Live parcel intelligence for property managers",
   description:
-    "A lead-scoring cockpit for property management companies. Find absentee owners, long-vacant buildings, and small-to-mid multifamily targets.",
+    "Flowio turns county parcels into scored, segmentable PM leads: absentees, repeat owners, entities, and cockpit-ready portfolios.",
 };
 
 export default function RootLayout({

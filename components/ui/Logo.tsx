@@ -15,7 +15,7 @@ export function ParcelPilotLogo({
         viewBox="0 0 64 64"
         xmlns="http://www.w3.org/2000/svg"
         className={`shrink-0 ${iconClassName}`}
-        aria-label="Parcel Pilot — Cessna over skyline"
+        aria-label="Flowio — Parcel intelligence"
         role="img"
       >
         {/* Sun / circle backdrop */}
@@ -76,10 +76,10 @@ export function ParcelPilotLogo({
       {showWordmark ? (
         <div className="leading-tight">
           <div className="font-display text-xl font-semibold tracking-tight text-ink-900 sm:text-2xl">
-            Parcel Pilot
+            Flowio
           </div>
           <div className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.2em] text-ink-500 sm:text-xs">
-            Lead gen cockpit
+            Parcel intelligence
           </div>
         </div>
       ) : null}

@@ -85,8 +85,138 @@ body::before {
   background: transparent;
 }
 
+/* Flowio landing — motion system (respects reduced motion below) */
+@keyframes flowio-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes flowio-aurora {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.flowio-rise-word {
+  display: inline-block;
+  opacity: 0;
+  animation: flowio-rise 0.72s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.flowio-aurora-text {
+  background: linear-gradient(
+    100deg,
+    #b34406 0%,
+    #f57c00 22%,
+    #059669 48%,
+    #7c3aed 72%,
+    #b34406 100%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: flowio-aurora 10s ease-in-out infinite;
+}
+
+.flowio-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: flowio-marquee 44s linear infinite;
+}
+
+@keyframes flowio-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.flowio-glass-panel {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.72) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.flowio-btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.flowio-btn-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.22) 50%,
+    transparent 60%
+  );
+  background-size: 220% 100%;
+  animation: flowio-shine-sweep 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes flowio-shine-sweep {
+  0%,
+  100% {
+    background-position: 120% 0;
+  }
+  50% {
+    background-position: -40% 0;
+  }
+}
+
+.flowio-hero-grid {
+  background-image:
+    linear-gradient(rgba(17, 21, 31, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 21, 31, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 20%, black 20%, transparent 75%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-ping {
     animation: none !important;
+  }
+
+  .flowio-marquee-track,
+  .animate-flowio-float-slow {
+    animation: none !important;
+  }
+
+  .flowio-aurora-text {
+    animation: none !important;
+    background-position: 0% 50% !important;
+  }
+
+  .flowio-rise-word {
+    animation: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+  }
+
+  .flowio-btn-shine::after {
+    display: none;
+  }
+
+  body::before {
+    animation: none;
   }
 }

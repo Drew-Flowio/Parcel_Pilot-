@@ -70,7 +70,7 @@ export function SemiArcGauge({
 
   return (
     <figure
-      className="flex flex-col items-center rounded-2xl border border-ink-200/70 bg-white/90 px-2 py-3 shadow-sm"
+      className="flex flex-col items-center rounded-2xl border border-white/75 bg-white/90 px-2 py-3 shadow-lift-sm ring-1 ring-ink-900/[0.03] transition duration-300 hover:-translate-y-1 hover:border-accent-200/40 hover:shadow-lift"
       aria-label={`${label}. ${caption}. Showing ${ariaPct}.`}
     >
       <figcaption className="order-2 mx-auto mt-3 max-w-[11rem] text-center">
@@ -289,11 +289,11 @@ export function DashboardHeroGaugeStrip({
   const sosDenom = summary.sosResolved + summary.sosPending;
 
   return (
-    <div className="rounded-2xl border border-ink-200/90 bg-gradient-to-b from-white to-ink-50/80 p-4 shadow-soft sm:p-5">
+    <div className="rounded-3xl border border-white/75 bg-gradient-to-b from-white via-white to-ink-50/95 p-4 shadow-lift-sm ring-1 ring-ink-900/[0.04] backdrop-blur-sm sm:p-5">
       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="font-display text-lg font-semibold text-ink-900">Momentum gauges</h2>
-          <p className="text-xs leading-relaxed text-ink-500">
+          <h2 className="font-display text-xl font-semibold tracking-tight text-ink-900">Momentum gauges</h2>
+          <p className="mt-1 text-xs leading-relaxed text-ink-500">
             Wired to{" "}
             <code className="rounded bg-ink-100 px-1 py-0.5 font-mono text-[10px]">parcel_pilot_dashboard_metrics</code> —
             same roll-up as the cards below (no placeholders).
