@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabaseClient";
-import { requirePushSecret } from "@/lib/appfolio/auth";
+import { requireCronOrPushSecret } from "@/lib/appfolio/auth";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 /**
  * GET /api/appfolio/health
@@ -12,10 +13,10 @@ export const dynamic = "force-dynamic";
  *   - audit log:      successful pushes vs retrying / failed in the last 24h
  *   - recent errors:  last 10 failure rows for triage
  *
- * Auth: x-appfolio-push-secret header.
+ * Auth: `Authorization: Bearer $CRON_SECRET` OR `x-appfolio-push-secret`.
  */
 export async function GET(req: NextRequest) {
-  const denied = requirePushSecret(req);
+  const denied = requireCronOrPushSecret(req);
   if (denied) return denied;
 
   const supabase = getSupabaseServer();

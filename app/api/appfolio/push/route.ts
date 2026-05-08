@@ -1,40 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePushSecret } from "@/lib/appfolio/auth";
+import {
+  requireCronOrPushSecret,
+  requirePushSecret,
+} from "@/lib/appfolio/auth";
 import { runAppFolioPush } from "@/lib/appfolio/push";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 export const maxDuration = 60;
+
+/**
+ * GET /api/appfolio/push
+ *
+ * Vercel-cron entrypoint. Drains the unsynced-rollup backlog with default
+ * policy (10-min settle window, ≥2 msgs OR action-worthy).
+ *
+ * Auth: `Authorization: Bearer $CRON_SECRET` OR `x-appfolio-push-secret`.
+ */
+export async function GET(req: NextRequest) {
+  const denied = requireCronOrPushSecret(req);
+  if (denied) return denied;
+
+  try {
+    const result = await runAppFolioPush({
+      batchSize: 50,
+      maxWallMs: 30_000,
+    });
+    return NextResponse.json(result);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
+}
 
 /**
  * POST /api/appfolio/push
  *
+ * Manual / ops path. Auth: `x-appfolio-push-secret`.
+ *
  * Drains up to `batchSize` (default 50) unsynced thread-day rollups,
- * applying the push policy:
- *
- *   PUSH  → POST/PATCH the AppFolio note, mark `synced_to_appfolio_at = now()`,
- *           store the AppFolio note id on the rollup row.
- *   SKIP  → mark `synced_to_appfolio_at = now()` with `last_push_reason =
- *           'skip:<reason>'`. Re-evaluation happens only when content
- *           changes (rollup function clears the timestamp).
- *   QUEUE → leave `synced_to_appfolio_at = NULL`, stamp `last_push_reason
- *           = 'queue:<reason>'`. Next cron tick re-evaluates.
- *   RETRY → AppFolio 429 / 5xx / network error: same as queue but with
- *           `last_push_reason = 'retry:<reason>'`. The worker stops the
- *           batch on 429 so we don't burn through retries.
- *
- * Headers:
- *   x-appfolio-push-secret: $APPFOLIO_PUSH_SECRET   (required)
+ * applying the push policy (PUSH / SKIP / QUEUE / RETRY) — see
+ * `lib/appfolio/policy.ts` for rule details. This is the ONLY auto-push
+ * surface; owner records go through /api/appfolio/push/owner.
  *
  * Body (all optional):
  *   {
- *     "batchSize"?: number,                  // default 50, max 200
- *     "maxWallMs"?: number,                  // default 30_000
- *     "minSettleMinutes"?: number,           // policy override (default 10)
- *     "minMessages"?: number                 // policy override (default 2)
+ *     "batchSize"?: number,                 // default 50, max 200
+ *     "maxWallMs"?: number,                 // default 30_000
+ *     "minSettleMinutes"?: number,          // policy override (default 10)
+ *     "minMessages"?: number                // policy override (default 2)
  *   }
- *
- * This route is the ONLY auto-push entrypoint. Owner records and other
- * static data are pushed only via /api/appfolio/push/owner (manual).
  */
 export async function POST(req: NextRequest) {
   const denied = requirePushSecret(req);

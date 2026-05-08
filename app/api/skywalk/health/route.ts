@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabaseClient";
-import { requireSyncSecret } from "@/lib/skywalk/auth";
+import { requireCronOrSyncSecret } from "@/lib/skywalk/auth";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 /**
  * GET /api/skywalk/health
  *
- * Returns cursor state, queue depths, and the last few errors per resource —
- * enough for a status page or for debugging a stalled pipeline. Auth-gated
- * by the same shared secret as the sync routes.
+ * Cursor state, queue depths, rollup backlog. Suitable for an external
+ * status check (e.g. UptimeRobot) — auth via Vercel cron Bearer or the
+ * sync secret.
  */
 export async function GET(req: NextRequest) {
-  const denied = requireSyncSecret(req);
+  const denied = requireCronOrSyncSecret(req);
   if (denied) return denied;
 
   const supabase = getSupabaseServer();

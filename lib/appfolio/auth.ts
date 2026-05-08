@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Shared-secret check for `/api/appfolio/*` routes (cron, manual, owner,
- * health). The caller (Vercel cron / ops console / curl) sends:
+ * Shared-secret check for manual `/api/appfolio/*` ops:
  *
  *   x-appfolio-push-secret: $APPFOLIO_PUSH_SECRET
  *
- * Returns `null` if authorized; otherwise a 401 NextResponse to return as-is.
+ * Returns `null` if authorized; otherwise a 401 NextResponse.
  */
 export function requirePushSecret(req: NextRequest): NextResponse | null {
   const expected = process.env.APPFOLIO_PUSH_SECRET;
@@ -22,6 +21,40 @@ export function requirePushSecret(req: NextRequest): NextResponse | null {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   return null;
+}
+
+/**
+ * Auth gate for AppFolio routes hit by both Vercel Cron AND manual ops.
+ *
+ * Accepts EITHER:
+ *   1. `Authorization: Bearer $CRON_SECRET`            (Vercel cron).
+ *   2. `x-appfolio-push-secret: $APPFOLIO_PUSH_SECRET` (manual / ops).
+ *
+ * Either env var being set is sufficient. Returns `null` on success or a
+ * 401/500 NextResponse on failure.
+ */
+export function requireCronOrPushSecret(req: NextRequest): NextResponse | null {
+  const cron = process.env.CRON_SECRET ?? "";
+  const push = process.env.APPFOLIO_PUSH_SECRET ?? "";
+
+  if (!cron && !push) {
+    return NextResponse.json(
+      {
+        error:
+          "Neither CRON_SECRET nor APPFOLIO_PUSH_SECRET is configured on the server",
+      },
+      { status: 500 }
+    );
+  }
+
+  const auth = req.headers.get("authorization") ?? "";
+  const m = /^Bearer\s+(.+)$/i.exec(auth);
+  if (m && cron && constantTimeEqual(m[1], cron)) return null;
+
+  const supplied = req.headers.get("x-appfolio-push-secret") ?? "";
+  if (push && constantTimeEqual(supplied, push)) return null;
+
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 
 function constantTimeEqual(a: string, b: string): boolean {

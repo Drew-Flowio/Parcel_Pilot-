@@ -1,0 +1,29 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/skywalk/sync/messages",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/skywalk/sync/contacts",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/skywalk/sync/properties",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/skywalk/rollup?target=all&lookback_minutes=30",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/skywalk/manual-fetch",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/appfolio/push",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
