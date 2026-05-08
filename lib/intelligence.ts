@@ -177,6 +177,8 @@ export interface IntelligenceDashboardSummary {
   absentee: number;
   /** Sum of Hennepin `MKT_VAL_TOT` across all rows in `parcels_raw` — full cohort, each parcel once. */
   aggregateMarketValue: number;
+  /** Parcels whose owner holds 2+ parcels (sum of parcel_count over portfolio_groups where parcel_count ≥ 2). */
+  parcelsRepeatOwner: number;
   sosResolved: number;
   sosPending: number;
   /** Sum of non-null `unit_count` on assessor-derived rows (many parcels still null). */
@@ -209,6 +211,7 @@ export async function fetchIntelligenceSummary(
     institutions: Math.trunc(numFromJson(row.parcels_institutional)),
     absentee: Math.trunc(numFromJson(row.absentee_parcels)),
     aggregateMarketValue: numFromJson(row.sum_assessed_market_value),
+    parcelsRepeatOwner: Math.trunc(numFromJson(row.parcels_repeat_owner)),
     sosResolved: Math.trunc(numFromJson(row.sos_resolved)),
     sosPending: Math.trunc(numFromJson(row.sos_pending)),
     sumUnitCountAssessed: Math.trunc(numFromJson(row.sum_unit_count_assessed)),

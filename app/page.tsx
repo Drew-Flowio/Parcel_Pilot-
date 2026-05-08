@@ -36,6 +36,7 @@ export default async function IntelligenceDashboardPage() {
     sumUnitCountAssessed: 0,
     parcelsWithKnownUnits: 0,
     parcels_other: 0,
+    parcelsRepeatOwner: 0,
   };
   let topPortfolios: Awaited<ReturnType<typeof fetchTopPortfolios>> = [];
   let segments: Awaited<ReturnType<typeof fetchAllSegments>> = [];
