@@ -26,6 +26,7 @@ import { getSupabaseServer } from "@/lib/supabaseClient";
 import { AppFolioClient } from "./client";
 import { readAppFolioEnv } from "./env";
 import { decidePush } from "./policy";
+import { resolveLinkedParcel } from "./enrichment";
 import {
   rollupToAppFolioPayload,
   ownerToAppFolioPayload,
@@ -132,7 +133,17 @@ export async function runAppFolioPush(
 
       // decision.kind === "push"
       try {
-        const payload = rollupToAppFolioPayload(rollup);
+        // Best-effort parcel enrichment — never blocks the push.
+        let linkedParcel = null;
+        try {
+          linkedParcel = await resolveLinkedParcel({
+            skywalkPropertyId: rollup.skywalk_property_id,
+            skywalkContactId: rollup.skywalk_contact_id,
+          });
+        } catch {
+          linkedParcel = null;
+        }
+        const payload = rollupToAppFolioPayload(rollup, linkedParcel);
 
         // Honor APPFOLIO_DRY_RUN (preview deploys, smoke tests).
         const c = ensureClient();
@@ -314,22 +325,52 @@ async function claimBatch(
   batchSize: number,
   rollupId?: string
 ): Promise<ThreadDayRollupRow[]> {
-  let q = supabase
-    .from("skywalk_thread_day_rollups")
-    .select("*");
-
   if (rollupId) {
-    q = q.eq("id", rollupId);
-  } else {
-    q = q
-      .is("synced_to_appfolio_at", null)
-      .order("last_message_at", { ascending: true, nullsFirst: false })
-      .limit(batchSize);
+    const { data, error } = await supabase
+      .from("skywalk_thread_day_rollups")
+      .select("*")
+      .eq("id", rollupId);
+    if (error) throw error;
+    return (data ?? []) as ThreadDayRollupRow[];
   }
 
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data ?? []) as ThreadDayRollupRow[];
+  // Priority order:
+  //   1. needs_response   — operator-facing, push these first
+  //   2. active           — engaged conversations
+  //   3. awaiting_them    — we've replied, waiting on them (low urgency)
+  //   4. dormant/resolved — last (and policy may skip them entirely)
+  // Within each tier, sort by last_message_at DESC so freshest moves first.
+  // We split the work into two batched queries and merge — keeps the SQL
+  // dialect-agnostic and lets us preserve PostgREST-friendly filters.
+  const halfBatch = Math.max(1, Math.floor(batchSize / 2));
+
+  const urgent = await supabase
+    .from("skywalk_thread_day_rollups")
+    .select("*")
+    .is("synced_to_appfolio_at", null)
+    .in("status", ["needs_response", "active"])
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(batchSize);
+
+  if (urgent.error) throw urgent.error;
+  const urgentRows = (urgent.data ?? []) as ThreadDayRollupRow[];
+  if (urgentRows.length >= batchSize) return urgentRows;
+
+  const remaining = batchSize - urgentRows.length;
+  const others = await supabase
+    .from("skywalk_thread_day_rollups")
+    .select("*")
+    .is("synced_to_appfolio_at", null)
+    .or(
+      "status.is.null,status.eq.awaiting_them,status.eq.dormant,status.eq.resolved"
+    )
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(Math.max(remaining, halfBatch));
+
+  if (others.error) throw others.error;
+  const otherRows = (others.data ?? []) as ThreadDayRollupRow[];
+
+  return [...urgentRows, ...otherRows].slice(0, batchSize);
 }
 
 async function markPushed(

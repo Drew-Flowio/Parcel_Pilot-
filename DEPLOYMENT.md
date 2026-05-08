@@ -166,6 +166,16 @@ them immediately, complementing the 5-min cron pull.
 Each upstream record has a unique id (`skywalk_*_id`) which is the UNIQUE
 constraint on the matching table → re-deliveries are no-ops.
 
+### Real-time rollup
+
+For `message.created` / `message.updated` events, the webhook synchronously
+runs `skywalk_rollup_thread_days(p_conversation_id := <id>)` so the next
+AppFolio push tick (≤ 5 min later) sees the freshly aggregated rollup. The
+SQL function is conditional-invalidate, so duplicate kicks are harmless.
+
+This adds ~50–200 ms to the webhook ack — well within Skywalk's typical
+delivery deadline.
+
 ### Failure modes
 
 | HTTP | Meaning | Action |
@@ -173,6 +183,65 @@ constraint on the matching table → re-deliveries are no-ops.
 | 401  | Bad signature | Skywalk should retry with corrected signature. |
 | 422  | Bad payload shape | Permanent — Skywalk should NOT retry. |
 | 500  | Server config issue (missing `SKYWALK_WEBHOOK_SECRET`) | Operator must fix. |
+
+---
+
+## 4a. Parcel linking (Skywalk ↔ Hennepin parcels)
+
+The pipeline carries operational data (Skywalk: messages, contacts,
+properties) and intelligence data (Hennepin: 31k parcels, score_v2,
+portfolio_groups, sos_intel) on separate tracks. The
+`skywalk_parcel_linking` migration joins them via `parcel_id` columns on
+`skywalk_properties` and `skywalk_contacts`.
+
+### Auto-link triggers
+
+`BEFORE INSERT/UPDATE` triggers run on every Skywalk row:
+
+* `skywalk_properties` → `match_parcel_by_address(normalized_address)`
+  (uppercase + alphanumeric exact match against `parcels_raw.property_address`)
+* `skywalk_contacts` → `match_parcel_by_contact(phone, email)`
+  (phone-digits exact, then lowercased-email exact, against
+  `parcel_pilot_overrides`)
+
+Auto-link is **exact match only** — no fuzzy/trigram. Bad joins are far
+more damaging than missed joins, and the manual reconcile pass below is
+cheap.
+
+### Payload enrichment
+
+When the AppFolio push worker pushes a thread-day rollup whose Skywalk
+property/contact resolves to a parcel, it adds:
+
+* `metadata.parcel` — the linked parcel's `score_v2`, `owner_name`,
+  `vacancy_status`, `contact_status`, etc.
+* Tags — `parcel:linked`, `parcel:score:high|mid|low`,
+  `parcel:owner-type:entity|institutional|individual`,
+  `parcel:contact-status:*`, `parcel:vacant`, `parcel:vacant-90+`.
+
+The receiving side (AppFolio / Zapier / shim) uses these tags to lane
+high-value leads without re-parsing the body. Enrichment is purely
+additive — push never blocks on a missing link.
+
+### Manual reconcile
+
+When parcels are added or addresses normalized after Skywalk rows already
+exist, run:
+
+```bash
+curl -X POST https://<domain>/api/skywalk/match \
+  -H "x-skywalk-sync-secret: $SKYWALK_SYNC_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":"all","limit":5000}'
+```
+
+Status check:
+
+```bash
+curl https://<domain>/api/skywalk/match \
+  -H "x-skywalk-sync-secret: $SKYWALK_SYNC_SECRET"
+# → { properties: { linked, unlinked, coverage_pct }, contacts: {…} }
+```
 
 ---
 

@@ -8,6 +8,8 @@ import {
 } from "@/lib/skywalk/webhook";
 import { getAdapter } from "@/lib/skywalk/resources";
 import type { SkywalkResource } from "@/lib/skywalk/types";
+import { rollupThreadDays } from "@/lib/skywalk/rollup";
+import { log } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -34,9 +36,13 @@ export const maxDuration = 10;
  * Idempotency:
  *   - Each upstream record has a unique id (skywalk_*_id) which is the
  *     UNIQUE constraint on the matching table → re-deliveries are no-ops.
- *   - We do NOT trigger downstream rollup synchronously; the next 5-min
- *     rollup cron tick re-aggregates touched conversations. This keeps
- *     the webhook response under Skywalk's signature-deadline threshold.
+ *   - For message events, we kick off a *narrow* fire-and-forget rollup
+ *     scoped to the affected conversation so AppFolio's next 5-min push
+ *     tick has fresh data. The rollup function is itself idempotent and
+ *     conditional-invalidate (only resets push state when content actually
+ *     changes), so duplicate kicks are harmless. Contact/property events
+ *     don't trigger a rollup — those are static-ish and rolled into the
+ *     5-min cron tick anyway.
  *
  * Failure modes:
  *   - Bad signature → 401 (Skywalk should retry).
@@ -82,11 +88,14 @@ export async function POST(req: NextRequest) {
   try {
     const { table, conflict } = await ingestWebhookRecord(body.event, body.data);
 
+    const conversationId = extractConversationId(body.event, body.data);
+
     const ack = {
       ok: true,
       event: body.event,
       table,
       conflict_column: conflict,
+      conversation_id: conversationId,
       delivery_id: body.delivery_id ?? null,
       duration_ms: Date.now() - startedAt,
     };
@@ -100,8 +109,54 @@ export async function POST(req: NextRequest) {
       .eq("resource", resourceForEvent(body.event))
       .then(() => {});
 
-    return NextResponse.json(ack);
+    // Inline thread-day rollup for *just this conversation* — bounded
+    // work (the SQL function filters by p_conversation_id), typically
+    // 50-200ms. Vercel terminates a serverless function the moment its
+    // response is sent, so a fire-and-forget Promise wouldn't actually
+    // run; we await synchronously instead.
+    //
+    // The rollup function is conditional-invalidate (only marks rollups
+    // as unsynced when content actually changes), so duplicate kicks are
+    // harmless. We don't run the conversation-level rollup here — the
+    // 5-min cron handles that and AppFolio push uses thread_day rollups
+    // exclusively.
+    let rollupResult: { rolledUp: number; durationMs: number } | null = null;
+    if (conversationId && body.event.startsWith("message.")) {
+      try {
+        rollupResult = await rollupThreadDays({ conversationId });
+      } catch (err) {
+        log.warn({
+          evt: "webhook.rollup.thread_days.error",
+          conversation_id: conversationId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    log.info({
+      evt: "webhook.ingest.ok",
+      event: body.event,
+      table,
+      conversation_id: conversationId,
+      delivery_id: body.delivery_id ?? null,
+      duration_ms: Date.now() - startedAt,
+      rolled_up: rollupResult?.rolledUp ?? 0,
+      rollup_ms: rollupResult?.durationMs ?? 0,
+    });
+
+    return NextResponse.json({
+      ...ack,
+      rolled_up: rollupResult?.rolledUp ?? 0,
+      rollup_ms: rollupResult?.durationMs ?? 0,
+      duration_ms: Date.now() - startedAt,
+    });
   } catch (err) {
+    log.error({
+      evt: "webhook.ingest.failed",
+      event: body.event,
+      delivery_id: body.delivery_id ?? null,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json(
       {
         error: err instanceof Error ? err.message : String(err),
@@ -111,6 +166,19 @@ export async function POST(req: NextRequest) {
       { status: 422 }
     );
   }
+}
+
+/** Extract conversation id from a message event (only) for narrow rollup. */
+function extractConversationId(
+  event: SkywalkWebhookEvent,
+  data: Record<string, unknown>
+): string | null {
+  if (!event.startsWith("message.")) return null;
+  for (const k of ["conversation_id", "thread_id"]) {
+    const v = data[k];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return null;
 }
 
 // --------------------------------------------------------------------------

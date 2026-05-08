@@ -28,10 +28,12 @@ import type {
   KeyPointEntry,
   ActionEntry,
 } from "./types";
+import { tagsForParcel, type LinkedParcelIntel } from "./enrichment";
 
 // Re-export so callers can `import { ParticipantInfo } from "@/lib/appfolio/payload"`
 // without breaking.
 export type { ParticipantInfo, KeyPointEntry, ActionEntry } from "./types";
+export type { LinkedParcelIntel } from "./enrichment";
 
 /**
  * Stable envelope shipped to AppFolio for a (conversation, day) rollup.
@@ -64,6 +66,13 @@ export interface AppFolioNotePayload {
     summary_version: number;
     summarized_by: string | null;
     summarized_at: string | null;
+    /**
+     * Linked Hennepin parcel — populated when the Skywalk property/contact
+     * resolves to a known parcel. `null` when no link exists. Receivers
+     * should not assume presence; use it only to enrich routing, never to
+     * gate the message itself.
+     */
+    parcel: LinkedParcelIntel | null;
   };
 }
 
@@ -97,11 +106,16 @@ export interface AppFolioOwnerPayload {
  * `external_id` is `skywalk:{conversation}:{YYYY-MM-DD}` — deterministic,
  * URL-safe, and stable across rollup rebuilds. AppFolio (or the webhook
  * shim) should treat this as the dedupe key.
+ *
+ * If `linkedParcel` is supplied, parcel intelligence (score_v2, owner,
+ * vacancy, etc.) is folded into both the tag set and `metadata.parcel`,
+ * letting the receiver lane based on Hennepin lead quality.
  */
 export function rollupToAppFolioPayload(
-  rollup: ThreadDayRollupRow
+  rollup: ThreadDayRollupRow,
+  linkedParcel: LinkedParcelIntel | null = null
 ): AppFolioNotePayload {
-  const tags = buildTags(rollup);
+  const tags = buildTags(rollup, linkedParcel);
   const subject = buildSubject(rollup);
   const body = rollup.body_concat ?? rollup.summary_text ?? "";
 
@@ -129,15 +143,20 @@ export function rollupToAppFolioPayload(
       summary_version: rollup.summary_version,
       summarized_by: rollup.summarized_by,
       summarized_at: rollup.summarized_at,
+      parcel: linkedParcel,
     },
   };
 }
 
 /**
- * Tag set from rollup status + action keywords. Receiving side can filter
- * "skywalk + needs_response" lanes downstream without re-parsing the body.
+ * Tag set from rollup status + action keywords + linked parcel intel.
+ * Receiving side can filter "skywalk + needs_response + parcel:score:high"
+ * lanes downstream without re-parsing the body.
  */
-function buildTags(rollup: ThreadDayRollupRow): string[] {
+function buildTags(
+  rollup: ThreadDayRollupRow,
+  parcel: LinkedParcelIntel | null
+): string[] {
   const set = new Set<string>(["skywalk"]);
   if (rollup.status) set.add(rollup.status);
   for (const a of rollup.actions ?? []) {
@@ -145,10 +164,10 @@ function buildTags(rollup: ThreadDayRollupRow): string[] {
       if (kw) set.add(kw);
     }
   }
-  // Channel hints
   for (const ch of rollup.channels ?? []) {
     if (ch) set.add(`channel:${ch}`);
   }
+  for (const t of tagsForParcel(parcel)) set.add(t);
   return [...set].slice(0, 32);
 }
 
