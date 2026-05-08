@@ -24,6 +24,7 @@ export default async function IntelligenceDashboardPage() {
   let summary = {
     totalParcels: 0,
     topTargets: 0,
+    topTargetMinScoreV2: 60,
     portfolios: 0,
     llcs: 0,
     individuals: 0,
@@ -32,6 +33,9 @@ export default async function IntelligenceDashboardPage() {
     aggregateMarketValue: 0,
     sosResolved: 0,
     sosPending: 0,
+    sumUnitCountAssessed: 0,
+    parcelsWithKnownUnits: 0,
+    parcels_other: 0,
   };
   let topPortfolios: Awaited<ReturnType<typeof fetchTopPortfolios>> = [];
   let segments: Awaited<ReturnType<typeof fetchAllSegments>> = [];
@@ -89,8 +93,9 @@ export default async function IntelligenceDashboardPage() {
             <div className="font-semibold">Intelligence engine is not responding.</div>
             <div className="mt-1 text-xs">{errorMsg}</div>
             <div className="mt-2 text-xs text-red-600">
-              Re-run the <code>intelligence_engine_v2</code> migration and refresh{" "}
-              <code>portfolio_groups</code>.
+              Apply Supabase migration <code>20260509120000_dashboard_metrics_source_of_truth.sql</code> and
+              ensure <code>parcel_pilot_dashboard_metrics()</code> exists. Refresh{" "}
+              <code>portfolio_groups</code> if scores look stale.
             </div>
           </div>
         ) : null}

@@ -153,67 +153,67 @@ export async function fetchTopPortfolios(
   return (data ?? []) as PortfolioGroupRow[];
 }
 
-export async function fetchIntelligenceSummary(
-  client: SupabaseClient
-): Promise<{
+function numFromJson(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+/** Homepage / intelligence dashboard aggregate stats (all parcel-grain where noted). */
+export interface IntelligenceDashboardSummary {
   totalParcels: number;
   topTargets: number;
+  /** Mirrors `lead_segments.top_500_pm.criteria.min_score_v2` (fallback 60). */
+  topTargetMinScoreV2: number;
   portfolios: number;
+  /** Parcels whose owner is classified `entity` (shown as “LLC / Entity”). */
   llcs: number;
+  /** Parcels whose owner is classified `individual`. */
   individuals: number;
   institutions: number;
   absentee: number;
+  /** Sum of Hennepin `MKT_VAL_TOT` across all rows in `parcels_raw` — full cohort, each parcel once. */
   aggregateMarketValue: number;
   sosResolved: number;
   sosPending: number;
-}> {
-  const runs = await Promise.all([
-    client.from("parcels_intel").select("*", { count: "exact", head: true }),
-    client.from("parcels_intel").select("*", { count: "exact", head: true }).gte("score_v2", 70),
-    client.from("portfolio_groups").select("*", { count: "exact", head: true }).gte("parcel_count", 2),
-    client.from("portfolio_groups").select("*", { count: "exact", head: true }).eq("owner_type", "entity"),
-    client.from("portfolio_groups").select("*", { count: "exact", head: true }).eq("owner_type", "individual"),
-    client.from("portfolio_groups").select("*", { count: "exact", head: true }).eq("owner_type", "institutional"),
-    client.from("parcels_intel").select("*", { count: "exact", head: true }).eq("is_absentee_owner", true),
-    client.from("sos_intel").select("*", { count: "exact", head: true }).eq("lookup_status", "found"),
-    client.from("sos_intel").select("*", { count: "exact", head: true }).eq("lookup_status", "pending"),
-  ]);
+  /** Sum of non-null `unit_count` on assessor-derived rows (many parcels still null). */
+  sumUnitCountAssessed: number;
+  parcelsWithKnownUnits: number;
+  /** Parcels with owner_type not in entity/individual/institutional or null PG join. */
+  parcels_other: number;
+}
 
-  const [
-    total,
-    top,
-    portfolios,
-    llcs,
-    individuals,
-    institutions,
-    absentee,
-    sosResolved,
-    sosPending,
-  ] = runs.map((r) => r.count ?? 0);
+export async function fetchIntelligenceSummary(
+  client: SupabaseClient
+): Promise<IntelligenceDashboardSummary> {
+  const { data, error } = await client.rpc("parcel_pilot_dashboard_metrics");
+  if (error) throw error;
 
-  // aggregate market value (sum): one extra lightweight call
-  const { data: sumData } = await client
-    .from("portfolio_groups")
-    .select("total_market_value")
-    .order("total_market_value", { ascending: false })
-    .limit(1000);
-  const aggregateMarketValue = (sumData ?? []).reduce(
-    (a, r: { total_market_value?: number | string | null }) =>
-      a + Number(r.total_market_value ?? 0),
-    0
-  );
+  const row = data as Record<string, unknown> | null;
+  if (!row || typeof row !== "object") {
+    throw new Error(
+      "parcel_pilot_dashboard_metrics returned no data — apply migration 20260509120000_dashboard_metrics_source_of_truth.sql"
+    );
+  }
 
   return {
-    totalParcels: total,
-    topTargets: top,
-    portfolios,
-    llcs,
-    individuals,
-    institutions,
-    absentee,
-    aggregateMarketValue,
-    sosResolved,
-    sosPending,
+    totalParcels: Math.trunc(numFromJson(row.total_parcels)),
+    topTargets: Math.trunc(numFromJson(row.top_targets)),
+    topTargetMinScoreV2: numFromJson(row.top_target_min_score_v2),
+    portfolios: Math.trunc(numFromJson(row.portfolios_2plus)),
+    llcs: Math.trunc(numFromJson(row.parcels_entity)),
+    individuals: Math.trunc(numFromJson(row.parcels_individual)),
+    institutions: Math.trunc(numFromJson(row.parcels_institutional)),
+    absentee: Math.trunc(numFromJson(row.absentee_parcels)),
+    aggregateMarketValue: numFromJson(row.sum_assessed_market_value),
+    sosResolved: Math.trunc(numFromJson(row.sos_resolved)),
+    sosPending: Math.trunc(numFromJson(row.sos_pending)),
+    sumUnitCountAssessed: Math.trunc(numFromJson(row.sum_unit_count_assessed)),
+    parcelsWithKnownUnits: Math.trunc(numFromJson(row.parcels_with_known_units)),
+    parcels_other: Math.trunc(numFromJson(row.parcels_other)),
   };
 }
 
