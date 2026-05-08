@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabaseServer();
 
-  const [cursors, queueCounts, pushPending] = await Promise.all([
+  const [cursors, queueCounts, pushPending, rollupCounts] = await Promise.all([
     supabase.from("skywalk_sync_cursors").select("*").order("resource"),
     Promise.all([
       supabase
@@ -37,6 +37,19 @@ export async function GET(req: NextRequest) {
       .from("appfolio_push_log")
       .select("*", { count: "exact", head: true })
       .in("status", ["pending", "retrying"]),
+    Promise.all([
+      supabase
+        .from("skywalk_thread_day_rollups")
+        .select("*", { count: "exact", head: true }),
+      supabase
+        .from("skywalk_thread_day_rollups")
+        .select("*", { count: "exact", head: true })
+        .is("synced_to_appfolio_at", null),
+      supabase
+        .from("skywalk_thread_day_rollups")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "needs_response"),
+    ]),
   ]);
 
   if (cursors.error) {
@@ -44,6 +57,7 @@ export async function GET(req: NextRequest) {
   }
 
   const [pending, inProgress, failed] = queueCounts;
+  const [rollupTotal, rollupUnsynced, rollupNeedsResponse] = rollupCounts;
 
   return NextResponse.json({
     ok: true,
@@ -56,6 +70,11 @@ export async function GET(req: NextRequest) {
     },
     appfolio_push_log: {
       pending_or_retrying: pushPending.count ?? 0,
+    },
+    thread_day_rollups: {
+      total: rollupTotal.count ?? 0,
+      unsynced_to_appfolio: rollupUnsynced.count ?? 0,
+      needs_response: rollupNeedsResponse.count ?? 0,
     },
   });
 }
